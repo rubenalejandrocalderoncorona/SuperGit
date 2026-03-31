@@ -1,0 +1,19 @@
+# Go binaries
+apps/tui/bin/
+
+# Node
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+
+# Environment
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp

@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/* ── SuperGit Design System ────────────────────────────────────── */
+@theme inline {
+  --font-sans: system-ui, -apple-system, "SF Pro Display", "Helvetica Neue",
+    Arial, sans-serif;
+
+  /* macOS Finder dark palette */
+  --color-bg: #0f1923;
+  --color-surface: #162030;
+  --color-border: #1e3a5f;
+  --color-accent: #378add;
+  --color-muted: #5a8ab0;
+  --color-dim: #2a4a6a;
+  --color-text: #d8e8f5;
+  --color-success: #6dcc8a;
+  --color-warning: #d4a84b;
+  --color-danger: #e07070;
+
+  /* Radii */
+  --radius-card: 11px;
+  --radius-sidebar: 12px;
+}
+
+html, body {
+  background: #0f1923;
+  color: #d8e8f5;
+  font-family: system-ui, -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  height: 100%;
+}
+
+/* Glassmorphism utility */
+.glass {
+  background: rgba(22, 32, 48, 0.72);
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  border: 1px solid rgba(55, 138, 221, 0.18);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a4a6a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #1e3a5f;
+}
+
+::selection {
+  background: rgba(55, 138, 221, 0.3);
+}
