@@ -23,6 +23,8 @@ var (
 // BuildMux registers all routes and returns the configured ServeMux.
 func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux := http.NewServeMux()
+	// Catch-all OPTIONS handler so browser CORS preflights always get a 204.
+	mux.HandleFunc("OPTIONS /", corsPreflightHandler)
 	mux.HandleFunc("GET /api/health", withCORS(healthHandler))
 	mux.HandleFunc("GET /api/version", withCORS(versionHandler))
 	mux.HandleFunc("GET /api/repos", withCORS(reposHandler(cfg, ghc)))
@@ -32,6 +34,13 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(ghc)))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/branches", withCORS(branchesHandler(ghc)))
 	return mux
+}
+
+func corsPreflightHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
