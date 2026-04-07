@@ -52,3 +52,13 @@ export async function fetchVersion(): Promise<VersionInfo> {
   if (!r.ok) throw new Error(`fetchVersion: ${r.status}`);
   return r.json();
 }
+
+export async function deleteRepo(fullName: string): Promise<void> {
+  const parts = fullName.split("/");
+  const path =
+    parts.length === 2
+      ? `${BASE}/api/repos/${parts[0]}/${parts[1]}`
+      : `${BASE}/api/repos/${fullName}`;
+  const r = await fetch(path, { method: "DELETE" });
+  if (!r.ok) throw new Error(`deleteRepo: ${r.status}`);
+}

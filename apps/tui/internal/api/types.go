@@ -2,7 +2,7 @@ package api
 
 import "time"
 
-const Version = "v1.0.0"
+const Version = "v0.0.2"
 const RepoURL = "https://github.com/rubenalejandrocalderoncorona/SuperGit"
 
 // Repo is the API representation of a repository.

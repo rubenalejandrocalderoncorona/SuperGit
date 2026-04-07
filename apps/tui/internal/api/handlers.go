@@ -5,11 +5,18 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rubenalejandrocalderoncorona/supergit/internal/config"
 	"github.com/rubenalejandrocalderoncorona/supergit/internal/git"
 	ghclient "github.com/rubenalejandrocalderoncorona/supergit/internal/github"
+)
+
+// hiddenRepos stores full_names of repos the user has dismissed (in-memory, per session).
+var (
+	hiddenMu    sync.RWMutex
+	hiddenRepos = make(map[string]bool)
 )
 
 // BuildMux registers all routes and returns the configured ServeMux.
@@ -18,6 +25,8 @@ func BuildMux(cfg *config.Config, gh *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("GET /api/health", withCORS(healthHandler))
 	mux.HandleFunc("GET /api/version", withCORS(versionHandler))
 	mux.HandleFunc("GET /api/repos", withCORS(reposHandler(cfg, gh)))
+	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}", withCORS(deleteRepoHandler))
+	mux.HandleFunc("DELETE /api/repos/{name}", withCORS(deleteLocalRepoHandler))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandler(gh)))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(gh)))
 	return mux
@@ -29,6 +38,26 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 
 func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, VersionInfo{Version: Version, RepoURL: RepoURL})
+}
+
+// deleteRepoHandler hides a GitHub repo (owner/repo) from the listing.
+func deleteRepoHandler(w http.ResponseWriter, r *http.Request) {
+	owner := r.PathValue("owner")
+	repo := r.PathValue("repo")
+	fullName := owner + "/" + repo
+	hiddenMu.Lock()
+	hiddenRepos[fullName] = true
+	hiddenMu.Unlock()
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// deleteLocalRepoHandler hides a local-only repo (name) from the listing.
+func deleteLocalRepoHandler(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	hiddenMu.Lock()
+	hiddenRepos[name] = true
+	hiddenMu.Unlock()
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 func reposHandler(cfg *config.Config, gh *ghclient.Client) http.HandlerFunc {
@@ -77,7 +106,21 @@ func reposHandler(cfg *config.Config, gh *ghclient.Client) http.HandlerFunc {
 			})
 		}
 
-		writeJSON(w, result)
+		// Filter out repos the user has hidden this session.
+		hiddenMu.RLock()
+		filtered := result[:0]
+		for _, repo := range result {
+			key := repo.FullName
+			if key == "" {
+				key = repo.Name
+			}
+			if !hiddenRepos[key] {
+				filtered = append(filtered, repo)
+			}
+		}
+		hiddenMu.RUnlock()
+
+		writeJSON(w, filtered)
 	}
 }
 

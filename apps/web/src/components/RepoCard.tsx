@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Repo } from "@/lib/api";
 
 const LANG_COLORS: Record<string, string> = {
@@ -18,39 +19,69 @@ interface RepoCardProps {
   repo: Repo;
   selected?: boolean;
   onClick?: () => void;
+  onDelete?: (fullName: string) => void;
 }
 
-export function RepoCard({ repo, selected, onClick }: RepoCardProps) {
-  const langColor = LANG_COLORS[repo.language] ?? "#5a8ab0";
+export function RepoCard({ repo, selected, onClick, onDelete }: RepoCardProps) {
+  const [hovered, setHovered] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const langColor = LANG_COLORS[repo.language] ?? "var(--sg-muted)";
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmDelete) {
+      onDelete?.(repo.full_name || repo.name);
+    } else {
+      setConfirmDelete(true);
+    }
+  };
 
   return (
     <article
       onClick={onClick}
-      className="glass p-4 cursor-pointer transition-all duration-200"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { setHovered(false); setConfirmDelete(false); }}
+      className="glass p-4 cursor-pointer transition-all duration-200 relative"
       style={{
         borderRadius: 11,
         boxShadow: selected
           ? "0 4px 24px rgba(55,138,221,0.2)"
-          : "0 2px 12px rgba(0,0,0,0.25)",
-        borderColor: selected
-          ? "rgba(55,138,221,0.5)"
-          : "rgba(55,138,221,0.18)",
+          : "var(--sg-card-shadow)",
+        borderColor: selected ? "var(--sg-accent)" : "var(--sg-border)",
         outline: selected ? "1px solid rgba(55,138,221,0.3)" : "none",
       }}
     >
+      {/* Delete button — appears on hover */}
+      {onDelete && hovered && (
+        <button
+          onClick={handleDeleteClick}
+          title={confirmDelete ? "Click again to confirm" : "Hide this repository"}
+          className="absolute top-2 right-2 text-xs px-2 py-0.5 rounded-full transition-all duration-150"
+          style={{
+            background: confirmDelete
+              ? "rgba(220,53,69,0.18)"
+              : "rgba(120,120,130,0.15)",
+            color: confirmDelete ? "#e05c6a" : "var(--sg-dim)",
+            border: `1px solid ${confirmDelete ? "rgba(220,53,69,0.4)" : "var(--sg-border)"}`,
+          }}
+        >
+          {confirmDelete ? "confirm?" : "✕"}
+        </button>
+      )}
+
       {/* Name + language */}
       <div className="flex items-start justify-between gap-2 mb-1">
         <h3
           className="font-semibold truncate text-sm"
-          style={{ color: "#d8e8f5" }}
+          style={{ color: "var(--sg-text)" }}
         >
           {repo.name}
         </h3>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0" style={{ marginRight: onDelete && hovered ? 40 : 0 }}>
           {repo.source === "local" && (
             <span
               className="text-xs px-1.5 py-0.5 rounded font-mono"
-              style={{ background: "rgba(42,74,106,0.6)", color: "#5a8ab0" }}
+              style={{ background: "var(--sg-local-bg)", color: "var(--sg-muted)" }}
             >
               local
             </span>
@@ -58,10 +89,7 @@ export function RepoCard({ repo, selected, onClick }: RepoCardProps) {
           {repo.language && (
             <span
               className="text-xs px-2 py-0.5 rounded-full font-medium"
-              style={{
-                color: langColor,
-                background: langColor + "22",
-              }}
+              style={{ color: langColor, background: langColor + "22" }}
             >
               {repo.language}
             </span>
@@ -71,27 +99,22 @@ export function RepoCard({ repo, selected, onClick }: RepoCardProps) {
 
       {/* Description */}
       {repo.description && (
-        <p
-          className="text-xs mb-2 line-clamp-2"
-          style={{ color: "#5a8ab0" }}
-        >
+        <p className="text-xs mb-2 line-clamp-2" style={{ color: "var(--sg-muted)" }}>
           {repo.description}
         </p>
       )}
 
       {/* Stats */}
-      <div className="flex items-center gap-4 text-xs" style={{ color: "#2a4a6a" }}>
+      <div className="flex items-center gap-4 text-xs" style={{ color: "var(--sg-dim)" }}>
         <span>★ {repo.stars.toLocaleString()}</span>
         <span>⑂ {repo.forks.toLocaleString()}</span>
-        {repo.last_commit && (
-          <span>{formatRelativeTime(repo.last_commit)}</span>
-        )}
+        {repo.last_commit && <span>{formatRelativeTime(repo.last_commit)}</span>}
         <a
           href={repo.url}
           target="_blank"
           rel="noopener noreferrer"
           className="ml-auto text-xs hover:underline transition-colors"
-          style={{ color: "#378add" }}
+          style={{ color: "var(--sg-accent)" }}
           onClick={(e) => e.stopPropagation()}
         >
           Open ↗
