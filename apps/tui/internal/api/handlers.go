@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -46,10 +47,13 @@ func deleteRepoHandler(ghc *ghclient.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
+		log.Printf("DELETE repo: %s/%s", owner, repo)
 		if err := ghc.DeleteRepo(r.Context(), owner, repo); err != nil {
+			log.Printf("DELETE repo error: %s/%s — %v", owner, repo, err)
 			errJSON(w, err.Error(), http.StatusBadGateway)
 			return
 		}
+		log.Printf("DELETE repo success: %s/%s", owner, repo)
 		// Also mark hidden so it won't reappear if the list is cached
 		hiddenMu.Lock()
 		hiddenRepos[owner+"/"+repo] = true

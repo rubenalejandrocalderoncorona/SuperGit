@@ -14,6 +14,7 @@ export function RepoGrid({ search, sort, selectedRepo }: RepoGridProps) {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -24,12 +25,15 @@ export function RepoGrid({ search, sort, selectedRepo }: RepoGridProps) {
   }, []);
 
   const handleDelete = async (fullName: string) => {
+    setDeleteError(null);
     try {
       await deleteRepo(fullName);
+      // Only remove from UI after confirmed server success
       setRepos((prev) => prev.filter((r) => (r.full_name || r.name) !== fullName));
-    } catch {
-      // ignore — server may not be running; still remove from UI
-      setRepos((prev) => prev.filter((r) => (r.full_name || r.name) !== fullName));
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "Delete failed");
+      // Auto-clear after 5s
+      setTimeout(() => setDeleteError(null), 5000);
     }
   };
 
@@ -77,6 +81,27 @@ export function RepoGrid({ search, sort, selectedRepo }: RepoGridProps) {
 
   return (
     <div>
+      {/* Delete error toast */}
+      {deleteError && (
+        <div
+          className="mb-3 px-4 py-2.5 rounded-lg text-xs flex items-center gap-2"
+          style={{
+            background: "rgba(220,53,69,0.1)",
+            border: "1px solid rgba(220,53,69,0.35)",
+            color: "#e05c6a",
+          }}
+        >
+          <span>⚠</span>
+          <span className="flex-1">{deleteError}</span>
+          <button
+            onClick={() => setDeleteError(null)}
+            style={{ color: "inherit", opacity: 0.6 }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="text-xs mb-3" style={{ color: "var(--sg-dim)" }}>
         {sorted.length} repositories{search && ` matching "${search}"`}
       </div>
