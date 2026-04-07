@@ -29,6 +29,7 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("DELETE /api/repos/{name}", withCORS(deleteLocalRepoHandler))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandler(ghc)))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(ghc)))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/branches", withCORS(branchesHandler(ghc)))
 	return mux
 }
 
@@ -230,6 +231,19 @@ func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
 			HighestVelocityWindow: bestWindow,
 			TotalCommits30d:       len(commits),
 		})
+	}
+}
+
+func branchesHandler(ghc *ghclient.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		owner := r.PathValue("owner")
+		repo := r.PathValue("repo")
+		count, err := ghc.BranchCount(r.Context(), owner, repo)
+		if err != nil {
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, map[string]int{"count": count})
 	}
 }
 

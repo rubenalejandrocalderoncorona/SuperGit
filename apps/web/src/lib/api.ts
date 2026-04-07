@@ -62,3 +62,10 @@ export async function deleteRepo(fullName: string): Promise<void> {
   const r = await fetch(path, { method: "DELETE" });
   if (!r.ok) throw new Error(`deleteRepo: ${r.status}`);
 }
+
+export async function fetchBranchCount(owner: string, repo: string): Promise<number> {
+  const r = await fetch(`${BASE}/api/repos/${owner}/${repo}/branches`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`fetchBranchCount: ${r.status}`);
+  const data: { count: number } = await r.json();
+  return data.count;
+}

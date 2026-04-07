@@ -49,6 +49,24 @@ func (c *Client) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return err
 }
 
+// BranchCount returns the number of branches for owner/repo.
+func (c *Client) BranchCount(ctx context.Context, owner, repo string) (int, error) {
+	opts := &gh.BranchListOptions{ListOptions: gh.ListOptions{PerPage: 100}}
+	var count int
+	for page := 1; page <= 5; page++ {
+		opts.Page = page
+		branches, resp, err := c.gh.Repositories.ListBranches(ctx, owner, repo, opts)
+		if err != nil {
+			return 0, err
+		}
+		count += len(branches)
+		if resp.NextPage == 0 {
+			break
+		}
+	}
+	return count, nil
+}
+
 // CommitHistory returns commits for owner/repo over the last `days` days.
 func (c *Client) CommitHistory(ctx context.Context, owner, repo string, days int) ([]*gh.RepositoryCommit, error) {
 	since := time.Now().AddDate(0, 0, -days)

@@ -13,6 +13,7 @@ type Repo struct {
 	Language    string    `json:"language"`
 	Stars       int       `json:"stars"`
 	Forks       int       `json:"forks"`
+	Branches    int       `json:"branches"`
 	LastCommit  time.Time `json:"last_commit"`
 	URL         string    `json:"url"`
 	Source      string    `json:"source"`    // "github" | "local"
