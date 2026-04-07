@@ -13,22 +13,22 @@ import (
 	ghclient "github.com/rubenalejandrocalderoncorona/supergit/internal/github"
 )
 
-// hiddenRepos stores full_names of repos the user has dismissed (in-memory, per session).
+// hiddenRepos stores full_names of local-only repos the user has dismissed (in-memory, per session).
 var (
 	hiddenMu    sync.RWMutex
 	hiddenRepos = make(map[string]bool)
 )
 
 // BuildMux registers all routes and returns the configured ServeMux.
-func BuildMux(cfg *config.Config, gh *ghclient.Client) *http.ServeMux {
+func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", withCORS(healthHandler))
 	mux.HandleFunc("GET /api/version", withCORS(versionHandler))
-	mux.HandleFunc("GET /api/repos", withCORS(reposHandler(cfg, gh)))
-	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}", withCORS(deleteRepoHandler))
+	mux.HandleFunc("GET /api/repos", withCORS(reposHandler(cfg, ghc)))
+	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}", withCORS(deleteRepoHandler(ghc)))
 	mux.HandleFunc("DELETE /api/repos/{name}", withCORS(deleteLocalRepoHandler))
-	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandler(gh)))
-	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(gh)))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandler(ghc)))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(ghc)))
 	return mux
 }
 
@@ -40,15 +40,21 @@ func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, VersionInfo{Version: Version, RepoURL: RepoURL})
 }
 
-// deleteRepoHandler hides a GitHub repo (owner/repo) from the listing.
-func deleteRepoHandler(w http.ResponseWriter, r *http.Request) {
-	owner := r.PathValue("owner")
-	repo := r.PathValue("repo")
-	fullName := owner + "/" + repo
-	hiddenMu.Lock()
-	hiddenRepos[fullName] = true
-	hiddenMu.Unlock()
-	writeJSON(w, map[string]bool{"ok": true})
+// deleteRepoHandler permanently deletes a GitHub repo via the API, then hides it locally.
+func deleteRepoHandler(ghc *ghclient.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		owner := r.PathValue("owner")
+		repo := r.PathValue("repo")
+		if err := ghc.DeleteRepo(r.Context(), owner, repo); err != nil {
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		// Also mark hidden so it won't reappear if the list is cached
+		hiddenMu.Lock()
+		hiddenRepos[owner+"/"+repo] = true
+		hiddenMu.Unlock()
+		writeJSON(w, map[string]bool{"ok": true})
+	}
 }
 
 // deleteLocalRepoHandler hides a local-only repo (name) from the listing.
@@ -60,13 +66,13 @@ func deleteLocalRepoHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-func reposHandler(cfg *config.Config, gh *ghclient.Client) http.HandlerFunc {
+func reposHandler(cfg *config.Config, ghc *ghclient.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		var result []Repo
 
 		// GitHub repos
-		ghRepos, err := gh.ListRepos(ctx)
+		ghRepos, err := ghc.ListRepos(ctx)
 		if err == nil {
 			for _, gr := range ghRepos {
 				repo := Repo{
@@ -106,7 +112,7 @@ func reposHandler(cfg *config.Config, gh *ghclient.Client) http.HandlerFunc {
 			})
 		}
 
-		// Filter out repos the user has hidden this session.
+		// Filter out repos hidden this session.
 		hiddenMu.RLock()
 		filtered := result[:0]
 		for _, repo := range result {
@@ -124,11 +130,11 @@ func reposHandler(cfg *config.Config, gh *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-func commitsHandler(gh *ghclient.Client) http.HandlerFunc {
+func commitsHandler(ghc *ghclient.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
-		commits, err := gh.CommitHistory(r.Context(), owner, repo, 30)
+		commits, err := ghc.CommitHistory(r.Context(), owner, repo, 30)
 		if err != nil {
 			errJSON(w, err.Error(), http.StatusBadGateway)
 			return
@@ -155,12 +161,12 @@ func commitsHandler(gh *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-func pulseHandler(gh *ghclient.Client) http.HandlerFunc {
+func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
 
-		commits, err := gh.CommitHistory(r.Context(), owner, repo, 30)
+		commits, err := ghc.CommitHistory(r.Context(), owner, repo, 30)
 		if err != nil {
 			errJSON(w, err.Error(), http.StatusBadGateway)
 			return

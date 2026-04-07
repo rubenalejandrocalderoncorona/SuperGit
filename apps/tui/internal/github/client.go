@@ -42,6 +42,13 @@ func (c *Client) ListRepos(ctx context.Context) ([]*gh.Repository, error) {
 	return all, nil
 }
 
+// DeleteRepo permanently deletes the given repository via the GitHub API.
+// The authenticated token must have the `delete_repo` scope.
+func (c *Client) DeleteRepo(ctx context.Context, owner, repo string) error {
+	_, err := c.gh.Repositories.Delete(ctx, owner, repo)
+	return err
+}
+
 // CommitHistory returns commits for owner/repo over the last `days` days.
 func (c *Client) CommitHistory(ctx context.Context, owner, repo string, days int) ([]*gh.RepositoryCommit, error) {
 	since := time.Now().AddDate(0, 0, -days)

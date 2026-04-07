@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { fetchPulse, type PulseData } from "@/lib/api";
+import { fetchPulse, type PulseData, type CommitDay } from "@/lib/api";
 
 interface PulseDashboardProps {
   repoFullName: string | null;
@@ -36,10 +36,7 @@ export function PulseDashboard({ repoFullName }: PulseDashboardProps) {
 
   if (!repoFullName) {
     return (
-      <div
-        className="flex items-center justify-center h-64 text-sm"
-        style={{ color: "#5a8ab0" }}
-      >
+      <div className="flex items-center justify-center h-64 text-sm" style={{ color: "var(--sg-muted)" }}>
         Select a repository from the sidebar to view pulse
       </div>
     );
@@ -47,10 +44,7 @@ export function PulseDashboard({ repoFullName }: PulseDashboardProps) {
 
   if (loading) {
     return (
-      <div
-        className="flex items-center justify-center h-64 text-sm"
-        style={{ color: "#5a8ab0" }}
-      >
+      <div className="flex items-center justify-center h-64 text-sm" style={{ color: "var(--sg-muted)" }}>
         Loading pulse for {repoFullName}…
       </div>
     );
@@ -58,10 +52,7 @@ export function PulseDashboard({ repoFullName }: PulseDashboardProps) {
 
   if (error) {
     return (
-      <div
-        className="flex items-center justify-center h-64 text-sm"
-        style={{ color: "#d4a84b" }}
-      >
+      <div className="flex items-center justify-center h-64 text-sm" style={{ color: "var(--sg-warning)" }}>
         ⚠ {error}
       </div>
     );
@@ -72,45 +63,25 @@ export function PulseDashboard({ repoFullName }: PulseDashboardProps) {
   return (
     <div className="space-y-6 p-2">
       <div>
-        <h2 className="text-xl font-bold" style={{ color: "#d8e8f5" }}>
-          Pulse{" "}
-          <span style={{ color: "#378add" }}>{repoFullName}</span>
+        <h2 className="text-xl font-bold" style={{ color: "var(--sg-text)" }}>
+          Pulse <span style={{ color: "var(--sg-accent)" }}>{repoFullName}</span>
         </h2>
-        <p className="text-xs mt-0.5" style={{ color: "#5a8ab0" }}>
+        <p className="text-xs mt-0.5" style={{ color: "var(--sg-muted)" }}>
           Last 30 days of activity
         </p>
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-3 gap-4">
-        <StatCard
-          label="Most Active Day"
-          value={data.most_active_day || "—"}
-        />
-        <StatCard
-          label="Commits (30d)"
-          value={String(data.total_commits_30d)}
-        />
-        <StatCard
-          label="Peak Window"
-          value={data.highest_velocity_window || "—"}
-          small
-        />
+        <StatCard label="Most Active Day" value={data.most_active_day || "—"} />
+        <StatCard label="Commits (30d)" value={String(data.total_commits_30d)} />
+        <StatCard label="Peak Window" value={data.highest_velocity_window || "—"} small />
       </div>
 
-      {/* Bar chart */}
       <div
         className="glass p-4"
-        style={{
-          borderRadius: 11,
-          boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-          height: 260,
-        }}
+        style={{ borderRadius: 11, boxShadow: "var(--sg-card-shadow)", height: 260 }}
       >
-        <div
-          className="text-xs font-semibold mb-3"
-          style={{ color: "#5a8ab0" }}
-        >
+        <div className="text-xs font-semibold mb-3" style={{ color: "var(--sg-muted)" }}>
           Commits per day
         </div>
         <ResponsiveContainer width="100%" height="88%">
@@ -121,34 +92,27 @@ export function PulseDashboard({ repoFullName }: PulseDashboardProps) {
           >
             <XAxis
               dataKey="date"
-              tick={{ fill: "#2a4a6a", fontSize: 9 }}
+              tick={{ fill: "var(--sg-muted)", fontSize: 9 }}
               tickFormatter={(d: string) => d.slice(5)}
               interval={4}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: "#2a4a6a", fontSize: 9 }}
+              tick={{ fill: "var(--sg-muted)", fontSize: 9 }}
               allowDecimals={false}
               axisLine={false}
               tickLine={false}
             />
             <Tooltip
-              contentStyle={{
-                background: "#162030",
-                border: "1px solid rgba(30,58,95,0.8)",
-                borderRadius: 8,
-                color: "#d8e8f5",
-                fontSize: 12,
-              }}
-              formatter={(v) => [v, "commits"]}
-              labelFormatter={(l) => String(l)}
+              cursor={{ fill: "rgba(55,138,221,0.08)", radius: 4 }}
+              content={<CustomTooltip />}
             />
             <Bar dataKey="count" radius={[3, 3, 0, 0]}>
               {data.commits_by_day.map((entry, i) => (
                 <Cell
                   key={i}
-                  fill={entry.count > 0 ? "#378add" : "#1e3a5f"}
+                  fill={entry.count > 0 ? "var(--sg-accent)" : "var(--sg-empty-bar)"}
                   fillOpacity={entry.count > 0 ? 0.85 : 0.4}
                 />
               ))}
@@ -160,29 +124,47 @@ export function PulseDashboard({ repoFullName }: PulseDashboardProps) {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  small,
-}: {
-  label: string;
-  value: string;
-  small?: boolean;
+function CustomTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: Array<{ value: number; payload: CommitDay }>;
+  label?: string;
 }) {
+  if (!active || !payload?.length) return null;
+  const count = payload[0].value;
+  return (
+    <div
+      style={{
+        background: "var(--sg-surface)",
+        border: "1px solid var(--sg-border-dim)",
+        borderRadius: 8,
+        padding: "8px 12px",
+        boxShadow: "var(--sg-card-shadow)",
+        minWidth: 110,
+      }}
+    >
+      <div style={{ color: "var(--sg-muted)", fontSize: 11, marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ color: "var(--sg-text)", fontSize: 13, fontWeight: 600 }}>
+        {count}{" "}
+        <span style={{ color: "var(--sg-muted)", fontWeight: 400, fontSize: 11 }}>
+          {count === 1 ? "commit" : "commits"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, small }: { label: string; value: string; small?: boolean }) {
   return (
     <div
       className="glass p-4"
-      style={{
-        borderRadius: 11,
-        boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
-      }}
+      style={{ borderRadius: 11, boxShadow: "var(--sg-card-shadow)" }}
     >
-      <div className="text-xs mb-1" style={{ color: "#5a8ab0" }}>
-        {label}
-      </div>
+      <div className="text-xs mb-1" style={{ color: "var(--sg-muted)" }}>{label}</div>
       <div
         className={`font-bold ${small ? "text-sm" : "text-2xl"}`}
-        style={{ color: "#378add" }}
+        style={{ color: "var(--sg-accent)" }}
       >
         {value}
       </div>
