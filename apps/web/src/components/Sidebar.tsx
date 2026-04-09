@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchRepos, fetchVersion, type Repo } from "@/lib/api";
+import { CommitHeatmap } from "@/components/CommitHeatmap";
 
 interface SidebarProps {
   onSelectRepo: (fullName: string) => void;
@@ -126,6 +127,31 @@ export function Sidebar({
           onClick={() => onViewChange("pulse")}
         />
       </nav>
+
+      {/* ── Commit heatmap ── */}
+      <div
+        className="mx-2 mb-2 px-2 py-2 rounded-lg"
+        style={{ background: "rgba(55,138,221,0.04)", border: "1px solid var(--sg-border)" }}
+      >
+        <div
+          className="text-xs font-semibold uppercase tracking-wider mb-2"
+          style={{ color: "var(--sg-dim)" }}
+        >
+          Commits · 365 days
+        </div>
+        {selectedRepo && selectedRepo.includes("/") ? (
+          <div style={{ overflowX: "auto" }}>
+            <CommitHeatmap
+              owner={selectedRepo.split("/")[0]}
+              repo={selectedRepo.split("/")[1]}
+            />
+          </div>
+        ) : (
+          <p className="text-xs" style={{ color: "var(--sg-dim)" }}>
+            Select a repo to view history
+          </p>
+        )}
+      </div>
 
       <div className="h-px mx-3" style={{ background: "var(--sg-border)" }} />
 

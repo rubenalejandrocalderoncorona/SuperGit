@@ -74,8 +74,10 @@ func (c *Client) CommitHistory(ctx context.Context, owner, repo string, days int
 		Since: since,
 		ListOptions: gh.ListOptions{PerPage: 100},
 	}
+	// Allow up to 20 pages (2 000 commits) to cover a full year.
+	maxPages := 20
 	var all []*gh.RepositoryCommit
-	for page := 1; page <= 5; page++ {
+	for page := 1; page <= maxPages; page++ {
 		opts.Page = page
 		commits, resp, err := c.gh.Repositories.ListCommits(ctx, owner, repo, opts)
 		if err != nil {
