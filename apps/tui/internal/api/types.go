@@ -2,7 +2,7 @@ package api
 
 import "time"
 
-const Version = "v0.0.2"
+const Version = "v0.0.3"
 const RepoURL = "https://github.com/rubenalejandrocalderoncorona/SuperGit"
 
 // Repo is the API representation of a repository.
@@ -13,6 +13,7 @@ type Repo struct {
 	Language    string    `json:"language"`
 	Stars       int       `json:"stars"`
 	Forks       int       `json:"forks"`
+	Branches    int       `json:"branches"`
 	LastCommit  time.Time `json:"last_commit"`
 	URL         string    `json:"url"`
 	Source      string    `json:"source"`    // "github" | "local"
@@ -31,6 +32,13 @@ type PulseData struct {
 	MostActiveDay          string      `json:"most_active_day"`
 	HighestVelocityWindow  string      `json:"highest_velocity_window"`
 	TotalCommits30d        int         `json:"total_commits_30d"`
+}
+
+// HeatmapDay is one cell in the yearly commit heatmap.
+type HeatmapDay struct {
+	Date      string `json:"date"`       // "YYYY-MM-DD"
+	Count     int    `json:"count"`
+	Intensity int    `json:"intensity"`  // 0–4 (0=none, 4=most)
 }
 
 // VersionInfo is the response from GET /api/version.

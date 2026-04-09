@@ -49,6 +49,24 @@ func (c *Client) DeleteRepo(ctx context.Context, owner, repo string) error {
 	return err
 }
 
+// BranchCount returns the number of branches for owner/repo.
+func (c *Client) BranchCount(ctx context.Context, owner, repo string) (int, error) {
+	opts := &gh.BranchListOptions{ListOptions: gh.ListOptions{PerPage: 100}}
+	var count int
+	for page := 1; page <= 5; page++ {
+		opts.Page = page
+		branches, resp, err := c.gh.Repositories.ListBranches(ctx, owner, repo, opts)
+		if err != nil {
+			return 0, err
+		}
+		count += len(branches)
+		if resp.NextPage == 0 {
+			break
+		}
+	}
+	return count, nil
+}
+
 // CommitHistory returns commits for owner/repo over the last `days` days.
 func (c *Client) CommitHistory(ctx context.Context, owner, repo string, days int) ([]*gh.RepositoryCommit, error) {
 	since := time.Now().AddDate(0, 0, -days)
@@ -56,8 +74,10 @@ func (c *Client) CommitHistory(ctx context.Context, owner, repo string, days int
 		Since: since,
 		ListOptions: gh.ListOptions{PerPage: 100},
 	}
+	// Allow up to 20 pages (2 000 commits) to cover a full year.
+	maxPages := 20
 	var all []*gh.RepositoryCommit
-	for page := 1; page <= 5; page++ {
+	for page := 1; page <= maxPages; page++ {
 		opts.Page = page
 		commits, resp, err := c.gh.Repositories.ListCommits(ctx, owner, repo, opts)
 		if err != nil {

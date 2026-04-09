@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +24,8 @@ var (
 // BuildMux registers all routes and returns the configured ServeMux.
 func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux := http.NewServeMux()
+	// Catch-all OPTIONS handler so browser CORS preflights always get a 204.
+	mux.HandleFunc("OPTIONS /", corsPreflightHandler)
 	mux.HandleFunc("GET /api/health", withCORS(healthHandler))
 	mux.HandleFunc("GET /api/version", withCORS(versionHandler))
 	mux.HandleFunc("GET /api/repos", withCORS(reposHandler(cfg, ghc)))
@@ -29,7 +33,16 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("DELETE /api/repos/{name}", withCORS(deleteLocalRepoHandler))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandler(ghc)))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(ghc)))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/branches", withCORS(branchesHandler(ghc)))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/heatmap", withCORS(heatmapHandler(ghc)))
 	return mux
+}
+
+func corsPreflightHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS")
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
@@ -45,10 +58,13 @@ func deleteRepoHandler(ghc *ghclient.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
+		log.Printf("DELETE repo: %s/%s", owner, repo)
 		if err := ghc.DeleteRepo(r.Context(), owner, repo); err != nil {
+			log.Printf("DELETE repo error: %s/%s — %v", owner, repo, err)
 			errJSON(w, err.Error(), http.StatusBadGateway)
 			return
 		}
+		log.Printf("DELETE repo success: %s/%s", owner, repo)
 		// Also mark hidden so it won't reappear if the list is cached
 		hiddenMu.Lock()
 		hiddenRepos[owner+"/"+repo] = true
@@ -230,6 +246,88 @@ func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
 			HighestVelocityWindow: bestWindow,
 			TotalCommits30d:       len(commits),
 		})
+	}
+}
+
+func branchesHandler(ghc *ghclient.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		owner := r.PathValue("owner")
+		repo := r.PathValue("repo")
+		count, err := ghc.BranchCount(r.Context(), owner, repo)
+		if err != nil {
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, map[string]int{"count": count})
+	}
+}
+
+func heatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		owner := r.PathValue("owner")
+		repo := r.PathValue("repo")
+
+		commits, err := ghc.CommitHistory(r.Context(), owner, repo, 365)
+		if err != nil {
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		// Build date → count map, pre-fill every day in the last 365 days.
+		dateCount := make(map[string]int, 365)
+		now := time.Now()
+		for i := 0; i < 365; i++ {
+			d := now.AddDate(0, 0, -i).Format("2006-01-02")
+			dateCount[d] = 0
+		}
+		for _, c := range commits {
+			if cm := c.GetCommit(); cm != nil {
+				if au := cm.GetAuthor(); au != nil {
+					key := au.GetDate().Time.Format("2006-01-02")
+					if _, ok := dateCount[key]; ok {
+						dateCount[key]++
+					}
+				}
+			}
+		}
+
+		// Find max count to calibrate intensity scale.
+		maxCount := 1
+		for _, cnt := range dateCount {
+			if cnt > maxCount {
+				maxCount = cnt
+			}
+		}
+
+		// Build sorted slice (oldest first).
+		dates := make([]string, 0, 365)
+		for d := range dateCount {
+			dates = append(dates, d)
+		}
+		sort.Strings(dates)
+
+		out := make([]HeatmapDay, 0, len(dates))
+		for _, d := range dates {
+			cnt := dateCount[d]
+			intensity := 0
+			if cnt > 0 {
+				// Map to 1–4 using a simple log-like scale.
+				ratio := float64(cnt) / float64(maxCount)
+				switch {
+				case ratio >= 0.75:
+					intensity = 4
+				case ratio >= 0.40:
+					intensity = 3
+				case ratio >= 0.15:
+					intensity = 2
+				default:
+					intensity = 1
+				}
+			}
+			out = append(out, HeatmapDay{Date: d, Count: cnt, Intensity: intensity})
+		}
+
+		writeJSON(w, out)
 	}
 }
 
