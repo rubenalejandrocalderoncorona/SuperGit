@@ -43,7 +43,6 @@ func (c *Client) ListRepos(ctx context.Context) ([]*gh.Repository, error) {
 }
 
 // DeleteRepo permanently deletes the given repository via the GitHub API.
-// The authenticated token must have the `delete_repo` scope.
 func (c *Client) DeleteRepo(ctx context.Context, owner, repo string) error {
 	_, err := c.gh.Repositories.Delete(ctx, owner, repo)
 	return err
@@ -67,11 +66,51 @@ func (c *Client) BranchCount(ctx context.Context, owner, repo string) (int, erro
 	return count, nil
 }
 
+// GetReadme returns the raw markdown content of owner/repo's README.
+func (c *Client) GetReadme(ctx context.Context, owner, repo string) (string, error) {
+	file, _, err := c.gh.Repositories.GetReadme(ctx, owner, repo, nil)
+	if err != nil {
+		return "", err
+	}
+	content, err := file.GetContent()
+	if err != nil {
+		return "", err
+	}
+	return content, nil
+}
+
+// AuthenticatedUser returns the login name of the authenticated user.
+func (c *Client) AuthenticatedUser(ctx context.Context) (string, error) {
+	u, _, err := c.gh.Users.Get(ctx, "")
+	if err != nil {
+		return "", err
+	}
+	return u.GetLogin(), nil
+}
+
+// UserActivity returns recent push events performed by username (up to 300, GitHub API cap).
+func (c *Client) UserActivity(ctx context.Context, username string) ([]*gh.Event, error) {
+	opts := &gh.ListOptions{PerPage: 100}
+	var all []*gh.Event
+	for page := 1; page <= 3; page++ {
+		opts.Page = page
+		events, resp, err := c.gh.Activity.ListEventsPerformedByUser(ctx, username, false, opts)
+		if err != nil {
+			return all, err
+		}
+		all = append(all, events...)
+		if resp.NextPage == 0 {
+			break
+		}
+	}
+	return all, nil
+}
+
 // CommitHistory returns commits for owner/repo over the last `days` days.
 func (c *Client) CommitHistory(ctx context.Context, owner, repo string, days int) ([]*gh.RepositoryCommit, error) {
 	since := time.Now().AddDate(0, 0, -days)
 	opts := &gh.CommitsListOptions{
-		Since: since,
+		Since:       since,
 		ListOptions: gh.ListOptions{PerPage: 100},
 	}
 	// Allow up to 20 pages (2 000 commits) to cover a full year.

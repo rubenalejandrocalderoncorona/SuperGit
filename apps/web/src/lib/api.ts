@@ -36,6 +36,10 @@ export interface HeatmapDay {
   intensity: number; // 0–4
 }
 
+export interface ReadmeContent {
+  content: string; // raw markdown
+}
+
 export async function fetchRepos(): Promise<Repo[]> {
   const r = await fetch(`${BASE}/api/repos`, { cache: "no-store" });
   if (!r.ok) throw new Error(`fetchRepos: ${r.status}`);
@@ -79,5 +83,17 @@ export async function fetchBranchCount(owner: string, repo: string): Promise<num
 export async function fetchHeatmap(owner: string, repo: string): Promise<HeatmapDay[]> {
   const r = await fetch(`${BASE}/api/repos/${owner}/${repo}/heatmap`, { cache: "no-store" });
   if (!r.ok) throw new Error(`fetchHeatmap: ${r.status}`);
+  return r.json();
+}
+
+export async function fetchReadme(owner: string, repo: string): Promise<ReadmeContent> {
+  const r = await fetch(`${BASE}/api/repos/${owner}/${repo}/readme`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`fetchReadme: ${r.status}`);
+  return r.json();
+}
+
+export async function fetchUserHeatmap(): Promise<HeatmapDay[]> {
+  const r = await fetch(`${BASE}/api/activity/heatmap`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`fetchUserHeatmap: ${r.status}`);
   return r.json();
 }

@@ -2,7 +2,7 @@ package api
 
 import "time"
 
-const Version = "v0.0.3"
+const Version = "v.0.0.4"
 const RepoURL = "https://github.com/rubenalejandrocalderoncorona/SuperGit"
 
 // Repo is the API representation of a repository.
@@ -39,6 +39,11 @@ type HeatmapDay struct {
 	Date      string `json:"date"`       // "YYYY-MM-DD"
 	Count     int    `json:"count"`
 	Intensity int    `json:"intensity"`  // 0–4 (0=none, 4=most)
+}
+
+// ReadmeContent is the response from GET /api/repos/{owner}/{repo}/readme.
+type ReadmeContent struct {
+	Content string `json:"content"` // raw markdown
 }
 
 // VersionInfo is the response from GET /api/version.

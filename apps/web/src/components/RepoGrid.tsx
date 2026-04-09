@@ -8,9 +8,10 @@ interface RepoGridProps {
   search: string;
   sort: "name" | "lastCommit";
   selectedRepo: string | null;
+  onSelectRepo?: (fullName: string) => void;
 }
 
-export function RepoGrid({ search, sort, selectedRepo }: RepoGridProps) {
+export function RepoGrid({ search, sort, selectedRepo, onSelectRepo }: RepoGridProps) {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +113,7 @@ export function RepoGrid({ search, sort, selectedRepo }: RepoGridProps) {
             key={r.full_name || r.name}
             repo={r}
             selected={selectedRepo === r.full_name}
+            onClick={() => onSelectRepo?.(r.full_name || r.name)}
             onDelete={handleDelete}
           />
         ))}

@@ -84,3 +84,40 @@ html, body {
 ::-webkit-scrollbar-thumb { background: var(--sg-scrollbar); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--sg-scrollbar-h); }
 ::selection { background: rgba(55, 138, 221, 0.3); }
+
+/* ── README rendered markdown ─────────────────────────────────────── */
+.sg-readme { color: var(--sg-text); font-size: 14px; line-height: 1.7; }
+.sg-readme h1, .sg-readme h2, .sg-readme h3,
+.sg-readme h4, .sg-readme h5, .sg-readme h6 {
+  color: var(--sg-text); font-weight: 700; margin: 1.4em 0 0.5em;
+  padding-bottom: 0.25em; border-bottom: 1px solid var(--sg-border);
+}
+.sg-readme h1 { font-size: 1.5em; }
+.sg-readme h2 { font-size: 1.25em; }
+.sg-readme h3 { font-size: 1.1em; }
+.sg-readme p  { margin: 0.7em 0; }
+.sg-readme a  { color: var(--sg-accent); text-decoration: underline; }
+.sg-readme code {
+  font-family: "SF Mono", "Fira Code", monospace; font-size: 0.85em;
+  background: var(--sg-surface); padding: 0.15em 0.4em; border-radius: 4px;
+  border: 1px solid var(--sg-border);
+}
+.sg-readme pre {
+  background: var(--sg-surface); border: 1px solid var(--sg-border);
+  border-radius: 8px; padding: 1em; overflow-x: auto; margin: 1em 0;
+}
+.sg-readme pre code { background: none; border: none; padding: 0; }
+.sg-readme ul, .sg-readme ol { padding-left: 1.5em; margin: 0.7em 0; }
+.sg-readme li { margin: 0.25em 0; }
+.sg-readme blockquote {
+  border-left: 3px solid var(--sg-accent); margin: 1em 0;
+  padding: 0.5em 1em; color: var(--sg-muted);
+  background: rgba(55,138,221,0.05); border-radius: 0 6px 6px 0;
+}
+.sg-readme table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+.sg-readme th, .sg-readme td {
+  border: 1px solid var(--sg-border); padding: 0.4em 0.75em; text-align: left;
+}
+.sg-readme th { background: var(--sg-surface); font-weight: 600; }
+.sg-readme img { max-width: 100%; border-radius: 6px; margin: 0.5em 0; }
+.sg-readme hr { border: none; border-top: 1px solid var(--sg-border); margin: 1.5em 0; }

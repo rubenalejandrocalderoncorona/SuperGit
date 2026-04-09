@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { fetchHeatmap, type HeatmapDay } from "@/lib/api";
 
 interface Props {
-  owner: string;
-  repo: string;
+  owner?: string;
+  repo?: string;
+  data?: HeatmapDay[]; // if provided, skips fetching
 }
 
-const CELL = 10;
+const CELL = 11;
 const GAP = 2;
 const STEP = CELL + GAP;
-const DAY_LABEL_W = 24;
+const DAY_LABEL_W = 26;
 const MONTH_LABEL_H = 16;
 
 const INTENSITY_VARS = [
@@ -40,34 +41,38 @@ type Cell = HeatmapDay & { col: number; row: number };
 
 function buildGrid(days: HeatmapDay[]): Cell[] {
   if (days.length === 0) return [];
-  // Anchor: the first day returned. We pad so that day falls on its correct
-  // weekday column within week 0.
+  // Anchor the first day on its real weekday within week 0 (Sun=0).
   const firstDate = new Date(days[0].date + "T00:00:00");
   const firstDow = firstDate.getDay(); // 0=Sun
-
   return days.map((d, i) => {
-    const slotIndex = i + firstDow; // position in a Sun-aligned flat array
-    return { ...d, col: Math.floor(slotIndex / 7), row: slotIndex % 7 };
+    const slot = i + firstDow;
+    return { ...d, col: Math.floor(slot / 7), row: slot % 7 };
   });
 }
 
-export function CommitHeatmap({ owner, repo }: Props) {
-  const [days, setDays] = useState<HeatmapDay[]>([]);
-  const [loading, setLoading] = useState(true);
+export function CommitHeatmap({ owner, repo, data: externalData }: Props) {
+  const [days, setDays] = useState<HeatmapDay[]>(externalData ?? []);
+  const [loading, setLoading] = useState(!externalData);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (externalData) {
+      setDays(externalData);
+      setLoading(false);
+      return;
+    }
+    if (!owner || !repo) return;
     setLoading(true);
     fetchHeatmap(owner, repo)
       .then(setDays)
       .catch(() => setDays([]))
       .finally(() => setLoading(false));
-  }, [owner, repo]);
+  }, [owner, repo, externalData]);
 
   if (loading) {
     return (
-      <div className="text-xs px-1 py-2" style={{ color: "var(--sg-dim)" }}>
+      <div className="text-xs py-2" style={{ color: "var(--sg-dim)" }}>
         Loading…
       </div>
     );
@@ -78,14 +83,13 @@ export function CommitHeatmap({ owner, repo }: Props) {
   const cells = buildGrid(days);
   const numCols = cells.length > 0 ? cells[cells.length - 1].col + 1 : 53;
 
-  // Month labels: first cell of each month where row === 0 (Sunday).
+  // Month labels: first occurrence of each month.
   const monthLabels: { col: number; label: string }[] = [];
   let lastMonth = -1;
   for (const c of cells) {
     const m = new Date(c.date + "T00:00:00").getMonth();
     if (m !== lastMonth) {
-      // Place label at this column regardless of row, to avoid gaps.
-      if (monthLabels.length === 0 || c.col > monthLabels[monthLabels.length - 1].col + 1) {
+      if (monthLabels.length === 0 || c.col > monthLabels[monthLabels.length - 1].col + 2) {
         monthLabels.push({ col: c.col, label: MONTHS[m] });
       }
       lastMonth = m;
@@ -156,7 +160,6 @@ export function CommitHeatmap({ owner, repo }: Props) {
         ))}
       </svg>
 
-      {/* Tooltip */}
       {tooltip && (
         <div
           className="pointer-events-none absolute z-50 px-2 py-1 rounded text-xs whitespace-nowrap"
