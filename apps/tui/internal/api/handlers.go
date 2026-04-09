@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	gh "github.com/google/go-github/v68/github"
 	"github.com/rubenalejandrocalderoncorona/supergit/internal/config"
 	"github.com/rubenalejandrocalderoncorona/supergit/internal/git"
 	ghclient "github.com/rubenalejandrocalderoncorona/supergit/internal/github"
@@ -35,6 +36,8 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(ghc)))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/branches", withCORS(branchesHandler(ghc)))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/heatmap", withCORS(heatmapHandler(ghc)))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/readme", withCORS(readmeHandler(ghc)))
+	mux.HandleFunc("GET /api/activity/heatmap", withCORS(userHeatmapHandler(ghc)))
 	return mux
 }
 
@@ -53,7 +56,6 @@ func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, VersionInfo{Version: Version, RepoURL: RepoURL})
 }
 
-// deleteRepoHandler permanently deletes a GitHub repo via the API, then hides it locally.
 func deleteRepoHandler(ghc *ghclient.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		owner := r.PathValue("owner")
@@ -65,7 +67,6 @@ func deleteRepoHandler(ghc *ghclient.Client) http.HandlerFunc {
 			return
 		}
 		log.Printf("DELETE repo success: %s/%s", owner, repo)
-		// Also mark hidden so it won't reappear if the list is cached
 		hiddenMu.Lock()
 		hiddenRepos[owner+"/"+repo] = true
 		hiddenMu.Unlock()
@@ -73,7 +74,6 @@ func deleteRepoHandler(ghc *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-// deleteLocalRepoHandler hides a local-only repo (name) from the listing.
 func deleteLocalRepoHandler(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	hiddenMu.Lock()
@@ -87,7 +87,6 @@ func reposHandler(cfg *config.Config, ghc *ghclient.Client) http.HandlerFunc {
 		ctx := r.Context()
 		var result []Repo
 
-		// GitHub repos
 		ghRepos, err := ghc.ListRepos(ctx)
 		if err == nil {
 			for _, gr := range ghRepos {
@@ -108,7 +107,6 @@ func reposHandler(cfg *config.Config, ghc *ghclient.Client) http.HandlerFunc {
 			}
 		}
 
-		// Local repos — merge by remote URL to avoid duplicates
 		existing := make(map[string]bool)
 		for _, r := range result {
 			existing[r.URL] = true
@@ -128,7 +126,6 @@ func reposHandler(cfg *config.Config, ghc *ghclient.Client) http.HandlerFunc {
 			})
 		}
 
-		// Filter out repos hidden this session.
 		hiddenMu.RLock()
 		filtered := result[:0]
 		for _, repo := range result {
@@ -188,7 +185,6 @@ func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
 			return
 		}
 
-		// Build date → count map
 		dateCount := make(map[string]int)
 		weekdayCount := make(map[time.Weekday]int)
 		now := time.Now()
@@ -207,14 +203,12 @@ func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
 			}
 		}
 
-		// Build sorted slice (oldest first)
 		var days []CommitDay
 		for i := 29; i >= 0; i-- {
 			d := now.AddDate(0, 0, -i).Format("2006-01-02")
 			days = append(days, CommitDay{Date: d, Count: dateCount[d]})
 		}
 
-		// Most active weekday
 		var bestWD time.Weekday
 		var bestWDCount int
 		for wd, cnt := range weekdayCount {
@@ -224,7 +218,6 @@ func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
 			}
 		}
 
-		// Highest velocity 7-day window
 		bestWindow := ""
 		bestWindowCount := 0
 		for i := 0; i <= 23; i++ {
@@ -262,6 +255,7 @@ func branchesHandler(ghc *ghclient.Client) http.HandlerFunc {
 	}
 }
 
+// heatmapHandler returns 365-day per-repo commit heatmap data.
 func heatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		owner := r.PathValue("owner")
@@ -273,7 +267,6 @@ func heatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
 			return
 		}
 
-		// Build date → count map, pre-fill every day in the last 365 days.
 		dateCount := make(map[string]int, 365)
 		now := time.Now()
 		for i := 0; i < 365; i++ {
@@ -291,45 +284,119 @@ func heatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
 			}
 		}
 
-		// Find max count to calibrate intensity scale.
-		maxCount := 1
-		for _, cnt := range dateCount {
-			if cnt > maxCount {
-				maxCount = cnt
-			}
-		}
-
-		// Build sorted slice (oldest first).
-		dates := make([]string, 0, 365)
-		for d := range dateCount {
-			dates = append(dates, d)
-		}
-		sort.Strings(dates)
-
-		out := make([]HeatmapDay, 0, len(dates))
-		for _, d := range dates {
-			cnt := dateCount[d]
-			intensity := 0
-			if cnt > 0 {
-				// Map to 1–4 using a simple log-like scale.
-				ratio := float64(cnt) / float64(maxCount)
-				switch {
-				case ratio >= 0.75:
-					intensity = 4
-				case ratio >= 0.40:
-					intensity = 3
-				case ratio >= 0.15:
-					intensity = 2
-				default:
-					intensity = 1
-				}
-			}
-			out = append(out, HeatmapDay{Date: d, Count: cnt, Intensity: intensity})
-		}
-
-		writeJSON(w, out)
+		writeJSON(w, buildHeatmap(dateCount, 365))
 	}
 }
+
+// readmeHandler returns the raw markdown README for a repo.
+func readmeHandler(ghc *ghclient.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		owner := r.PathValue("owner")
+		repo := r.PathValue("repo")
+		content, err := ghc.GetReadme(r.Context(), owner, repo)
+		if err != nil {
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, ReadmeContent{Content: content})
+	}
+}
+
+// userHeatmapHandler returns the authenticated user's contribution heatmap
+// across all repos for the past 365 days.
+func userHeatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// Get the authenticated username.
+		username, err := ghc.AuthenticatedUser(ctx)
+		if err != nil {
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		// Fetch user events (GitHub returns up to ~300 most recent events).
+		events, err := ghc.UserActivity(ctx, username)
+		if err != nil {
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		// Pre-fill 365 days.
+		dateCount := make(map[string]int, 365)
+		now := time.Now()
+		cutoff := now.AddDate(0, 0, -365)
+		for i := 0; i < 365; i++ {
+			d := now.AddDate(0, 0, -i).Format("2006-01-02")
+			dateCount[d] = 0
+		}
+
+		// Extract PushEvent commit counts.
+		for _, ev := range events {
+			if ev.GetType() != "PushEvent" {
+				continue
+			}
+			t := ev.GetCreatedAt().Time
+			if t.Before(cutoff) {
+				continue
+			}
+			key := t.Format("2006-01-02")
+			if _, ok := dateCount[key]; ok {
+				// Each PushEvent may carry several commits; use Size field.
+				if payload, err := ev.ParsePayload(); err == nil {
+					if push, ok := payload.(*gh.PushEvent); ok && push.Size != nil {
+						dateCount[key] += *push.Size
+					} else {
+						dateCount[key]++
+					}
+				} else {
+					dateCount[key]++
+				}
+			}
+		}
+
+		writeJSON(w, buildHeatmap(dateCount, 365))
+	}
+}
+
+// buildHeatmap converts a date→count map into a sorted []HeatmapDay slice.
+func buildHeatmap(dateCount map[string]int, days int) []HeatmapDay {
+	maxCount := 1
+	for _, cnt := range dateCount {
+		if cnt > maxCount {
+			maxCount = cnt
+		}
+	}
+
+	keys := make([]string, 0, days)
+	for d := range dateCount {
+		keys = append(keys, d)
+	}
+	sort.Strings(keys)
+
+	out := make([]HeatmapDay, 0, len(keys))
+	for _, d := range keys {
+		cnt := dateCount[d]
+		intensity := 0
+		if cnt > 0 {
+			ratio := float64(cnt) / float64(maxCount)
+			switch {
+			case ratio >= 0.75:
+				intensity = 4
+			case ratio >= 0.40:
+				intensity = 3
+			case ratio >= 0.15:
+				intensity = 2
+			default:
+				intensity = 1
+			}
+		}
+		out = append(out, HeatmapDay{Date: d, Count: cnt, Intensity: intensity})
+	}
+	return out
+}
+
+// ── Utilities ────────────────────────────────────────────────────────────────
 
 func firstLine(s string) string {
 	if idx := strings.Index(s, "\n"); idx != -1 {
@@ -339,7 +406,6 @@ func firstLine(s string) string {
 }
 
 func normalizeGitURL(u string) string {
-	// Convert git@github.com:user/repo.git → https://github.com/user/repo
 	u = strings.TrimSuffix(u, ".git")
 	if strings.HasPrefix(u, "git@github.com:") {
 		u = "https://github.com/" + strings.TrimPrefix(u, "git@github.com:")
@@ -354,5 +420,4 @@ func min(a, b int) int {
 	return b
 }
 
-// ensure context is used (suppress lint warnings)
 var _ = context.Background

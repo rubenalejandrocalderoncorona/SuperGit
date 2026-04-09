@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { fetchRepos, fetchVersion, type Repo } from "@/lib/api";
-import { CommitHeatmap } from "@/components/CommitHeatmap";
 
 interface SidebarProps {
   onSelectRepo: (fullName: string) => void;
   selectedRepo: string | null;
-  onViewChange: (view: "repos" | "pulse") => void;
-  activeView: "repos" | "pulse";
+  onViewChange: (view: "repos" | "pulse" | "activity") => void;
+  activeView: "repos" | "pulse" | "activity" | "repo-detail";
   theme: "dark" | "light";
   onToggleTheme: () => void;
 }
@@ -23,7 +22,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [error, setError] = useState(false);
-  const [version, setVersion] = useState("v0.0.2");
+  const [version, setVersion] = useState("v.0.0.3");
   const [repoURL, setRepoURL] = useState(
     "https://github.com/rubenalejandrocalderoncorona/SuperGit"
   );
@@ -86,21 +85,15 @@ export function Sidebar({
           SuperGit
         </span>
 
-        {/* Spacer */}
         <span className="flex-1" />
 
-        {/* Day / Night toggle */}
         <button
           onClick={onToggleTheme}
           title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
           className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150 shrink-0"
-          style={{
-            color: "var(--sg-muted)",
-            background: "transparent",
-          }}
+          style={{ color: "var(--sg-muted)", background: "transparent" }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background =
-              "rgba(55,138,221,0.12)";
+            (e.currentTarget as HTMLElement).style.background = "rgba(55,138,221,0.12)";
             (e.currentTarget as HTMLElement).style.color = "var(--sg-accent)";
           }}
           onMouseLeave={(e) => {
@@ -117,7 +110,7 @@ export function Sidebar({
         <NavItem
           label="Repositories"
           icon="⊞"
-          active={activeView === "repos"}
+          active={activeView === "repos" || activeView === "repo-detail"}
           onClick={() => onViewChange("repos")}
         />
         <NavItem
@@ -126,32 +119,13 @@ export function Sidebar({
           active={activeView === "pulse"}
           onClick={() => onViewChange("pulse")}
         />
+        <NavItem
+          label="Activity"
+          icon="◈"
+          active={activeView === "activity"}
+          onClick={() => onViewChange("activity")}
+        />
       </nav>
-
-      {/* ── Commit heatmap ── */}
-      <div
-        className="mx-2 mb-2 px-2 py-2 rounded-lg"
-        style={{ background: "rgba(55,138,221,0.04)", border: "1px solid var(--sg-border)" }}
-      >
-        <div
-          className="text-xs font-semibold uppercase tracking-wider mb-2"
-          style={{ color: "var(--sg-dim)" }}
-        >
-          Commits · 365 days
-        </div>
-        {selectedRepo && selectedRepo.includes("/") ? (
-          <div style={{ overflowX: "auto" }}>
-            <CommitHeatmap
-              owner={selectedRepo.split("/")[0]}
-              repo={selectedRepo.split("/")[1]}
-            />
-          </div>
-        ) : (
-          <p className="text-xs" style={{ color: "var(--sg-dim)" }}>
-            Select a repo to view history
-          </p>
-        )}
-      </div>
 
       <div className="h-px mx-3" style={{ background: "var(--sg-border)" }} />
 
@@ -183,8 +157,7 @@ export function Sidebar({
               }}
               onMouseEnter={(e) => {
                 if (selectedRepo !== r.full_name)
-                  (e.currentTarget as HTMLElement).style.background =
-                    "rgba(55,138,221,0.06)";
+                  (e.currentTarget as HTMLElement).style.background = "rgba(55,138,221,0.06)";
               }}
               onMouseLeave={(e) => {
                 if (selectedRepo !== r.full_name)
