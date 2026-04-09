@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gh "github.com/google/go-github/v68/github"
@@ -16,35 +18,53 @@ import (
 	ghclient "github.com/rubenalejandrocalderoncorona/supergit/internal/github"
 )
 
-// hiddenRepos stores full_names of local-only repos the user has dismissed (in-memory, per session).
+// ensure gh import is used
+var _ *gh.RepositoryCommit
+
+// hiddenRepos stores full_names of repos hidden this session.
 var (
 	hiddenMu    sync.RWMutex
 	hiddenRepos = make(map[string]bool)
 )
 
+// activeClient is the hot-swappable GitHub client, replaced when credentials change.
+var activeClient atomic.Pointer[ghclient.Client]
+
+// activeCfg holds the current config for the settings handlers.
+var (
+	activeCfgMu sync.RWMutex
+	activeCfg   *config.Config
+)
+
 // BuildMux registers all routes and returns the configured ServeMux.
 func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
+	activeCfgMu.Lock()
+	activeCfg = cfg
+	activeCfgMu.Unlock()
+	activeClient.Store(ghc)
+
 	mux := http.NewServeMux()
-	// Catch-all OPTIONS handler so browser CORS preflights always get a 204.
 	mux.HandleFunc("OPTIONS /", corsPreflightHandler)
 	mux.HandleFunc("GET /api/health", withCORS(healthHandler))
 	mux.HandleFunc("GET /api/version", withCORS(versionHandler))
-	mux.HandleFunc("GET /api/repos", withCORS(reposHandler(cfg, ghc)))
-	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}", withCORS(deleteRepoHandler(ghc)))
+	mux.HandleFunc("GET /api/settings", withCORS(getSettingsHandler))
+	mux.HandleFunc("POST /api/settings", withCORS(postSettingsHandler))
+	mux.HandleFunc("GET /api/repos", withCORS(reposHandlerDynamic(cfg)))
+	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}", withCORS(deleteRepoHandlerDynamic()))
 	mux.HandleFunc("DELETE /api/repos/{name}", withCORS(deleteLocalRepoHandler))
-	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandler(ghc)))
-	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandler(ghc)))
-	mux.HandleFunc("GET /api/repos/{owner}/{repo}/branches", withCORS(branchesHandler(ghc)))
-	mux.HandleFunc("GET /api/repos/{owner}/{repo}/heatmap", withCORS(heatmapHandler(ghc)))
-	mux.HandleFunc("GET /api/repos/{owner}/{repo}/readme", withCORS(readmeHandler(ghc)))
-	mux.HandleFunc("GET /api/activity/heatmap", withCORS(userHeatmapHandler(ghc)))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandlerDynamic()))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/pulse", withCORS(pulseHandlerDynamic()))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/branches", withCORS(branchesHandlerDynamic()))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/heatmap", withCORS(heatmapHandlerDynamic()))
+	mux.HandleFunc("GET /api/repos/{owner}/{repo}/readme", withCORS(readmeHandlerDynamic()))
+	mux.HandleFunc("GET /api/activity/heatmap", withCORS(userHeatmapHandler()))
 	return mux
 }
 
 func corsPreflightHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -56,34 +76,58 @@ func versionHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, VersionInfo{Version: Version, RepoURL: RepoURL})
 }
 
-func deleteRepoHandler(ghc *ghclient.Client) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		owner := r.PathValue("owner")
-		repo := r.PathValue("repo")
-		log.Printf("DELETE repo: %s/%s", owner, repo)
-		if err := ghc.DeleteRepo(r.Context(), owner, repo); err != nil {
-			log.Printf("DELETE repo error: %s/%s — %v", owner, repo, err)
-			errJSON(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		log.Printf("DELETE repo success: %s/%s", owner, repo)
-		hiddenMu.Lock()
-		hiddenRepos[owner+"/"+repo] = true
-		hiddenMu.Unlock()
-		writeJSON(w, map[string]bool{"ok": true})
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+func getSettingsHandler(w http.ResponseWriter, _ *http.Request) {
+	activeCfgMu.RLock()
+	token := activeCfg.GitHubToken
+	activeCfgMu.RUnlock()
+
+	hint := ""
+	if len(token) >= 4 {
+		hint = "****" + token[len(token)-4:]
+	} else if token != "" {
+		hint = "****"
 	}
+	writeJSON(w, SettingsInfo{TokenHint: hint})
 }
 
-func deleteLocalRepoHandler(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	hiddenMu.Lock()
-	hiddenRepos[name] = true
-	hiddenMu.Unlock()
+func postSettingsHandler(w http.ResponseWriter, r *http.Request) {
+	var req SettingsInfo
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.GitHubToken == "" {
+		errJSON(w, "github_token is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate the new token by making a test API call.
+	newClient := ghclient.New(req.GitHubToken)
+	if _, err := newClient.AuthenticatedUser(r.Context()); err != nil {
+		errJSON(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Persist to config file.
+	activeCfgMu.Lock()
+	activeCfg.GitHubToken = req.GitHubToken
+	if err := activeCfg.Save(); err != nil {
+		activeCfgMu.Unlock()
+		errJSON(w, "failed to save config: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	activeCfgMu.Unlock()
+
+	// Hot-swap the active client.
+	activeClient.Store(newClient)
+	log.Printf("credentials updated — now using new GitHub token")
+
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
-func reposHandler(cfg *config.Config, ghc *ghclient.Client) http.HandlerFunc {
+// ── Repo handlers (dynamic — always read activeClient) ────────────────────────
+
+func reposHandlerDynamic(cfg *config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
 		ctx := r.Context()
 		var result []Repo
 
@@ -143,8 +187,36 @@ func reposHandler(cfg *config.Config, ghc *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-func commitsHandler(ghc *ghclient.Client) http.HandlerFunc {
+func deleteRepoHandlerDynamic() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
+		owner := r.PathValue("owner")
+		repo := r.PathValue("repo")
+		log.Printf("DELETE repo: %s/%s", owner, repo)
+		if err := ghc.DeleteRepo(r.Context(), owner, repo); err != nil {
+			log.Printf("DELETE repo error: %s/%s — %v", owner, repo, err)
+			errJSON(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		log.Printf("DELETE repo success: %s/%s", owner, repo)
+		hiddenMu.Lock()
+		hiddenRepos[owner+"/"+repo] = true
+		hiddenMu.Unlock()
+		writeJSON(w, map[string]bool{"ok": true})
+	}
+}
+
+func deleteLocalRepoHandler(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	hiddenMu.Lock()
+	hiddenRepos[name] = true
+	hiddenMu.Unlock()
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func commitsHandlerDynamic() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
 		commits, err := ghc.CommitHistory(r.Context(), owner, repo, 30)
@@ -174,8 +246,9 @@ func commitsHandler(ghc *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
+func pulseHandlerDynamic() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
 
@@ -242,8 +315,9 @@ func pulseHandler(ghc *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-func branchesHandler(ghc *ghclient.Client) http.HandlerFunc {
+func branchesHandlerDynamic() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
 		count, err := ghc.BranchCount(r.Context(), owner, repo)
@@ -255,9 +329,9 @@ func branchesHandler(ghc *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-// heatmapHandler returns 365-day per-repo commit heatmap data.
-func heatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
+func heatmapHandlerDynamic() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
 
@@ -288,9 +362,9 @@ func heatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
 	}
 }
 
-// readmeHandler returns the raw markdown README for a repo.
-func readmeHandler(ghc *ghclient.Client) http.HandlerFunc {
+func readmeHandlerDynamic() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
 		owner := r.PathValue("owner")
 		repo := r.PathValue("repo")
 		content, err := ghc.GetReadme(r.Context(), owner, repo)
@@ -304,53 +378,62 @@ func readmeHandler(ghc *ghclient.Client) http.HandlerFunc {
 
 // userHeatmapHandler returns the authenticated user's contribution heatmap
 // across all repos for the past 365 days.
-func userHeatmapHandler(ghc *ghclient.Client) http.HandlerFunc {
+// It fetches commits per-repo filtered by author, in parallel.
+func userHeatmapHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
 		ctx := r.Context()
 
-		// Get the authenticated username.
 		username, err := ghc.AuthenticatedUser(ctx)
 		if err != nil {
 			errJSON(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 
-		// Fetch user events (GitHub returns up to ~300 most recent events).
-		events, err := ghc.UserActivity(ctx, username)
+		repos, err := ghc.ListRepos(ctx)
 		if err != nil {
 			errJSON(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 
-		// Pre-fill 365 days.
+		type result struct{ commits []*gh.RepositoryCommit }
+		results := make(chan result, len(repos))
+		sem := make(chan struct{}, 8)
+
+		var wg sync.WaitGroup
+		for _, repo := range repos {
+			owner := repo.GetOwner().GetLogin()
+			name := repo.GetName()
+			wg.Add(1)
+			go func(owner, name string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				commits, _ := ghc.CommitHistoryByAuthor(ctx, owner, name, username, 365)
+				results <- result{commits: commits}
+			}(owner, name)
+		}
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
 		dateCount := make(map[string]int, 365)
 		now := time.Now()
-		cutoff := now.AddDate(0, 0, -365)
 		for i := 0; i < 365; i++ {
 			d := now.AddDate(0, 0, -i).Format("2006-01-02")
 			dateCount[d] = 0
 		}
 
-		// Extract PushEvent commit counts.
-		for _, ev := range events {
-			if ev.GetType() != "PushEvent" {
-				continue
-			}
-			t := ev.GetCreatedAt().Time
-			if t.Before(cutoff) {
-				continue
-			}
-			key := t.Format("2006-01-02")
-			if _, ok := dateCount[key]; ok {
-				// Each PushEvent may carry several commits; use Size field.
-				if payload, err := ev.ParsePayload(); err == nil {
-					if push, ok := payload.(*gh.PushEvent); ok && push.Size != nil {
-						dateCount[key] += *push.Size
-					} else {
-						dateCount[key]++
+		for rc := range results {
+			for _, c := range rc.commits {
+				if cm := c.GetCommit(); cm != nil {
+					if au := cm.GetAuthor(); au != nil {
+						key := au.GetDate().Time.Format("2006-01-02")
+						if _, ok := dateCount[key]; ok {
+							dateCount[key]++
+						}
 					}
-				} else {
-					dateCount[key]++
 				}
 			}
 		}
@@ -396,7 +479,7 @@ func buildHeatmap(dateCount map[string]int, days int) []HeatmapDay {
 	return out
 }
 
-// ── Utilities ────────────────────────────────────────────────────────────────
+// ── Utilities ─────────────────────────────────────────────────────────────────
 
 func firstLine(s string) string {
 	if idx := strings.Index(s, "\n"); idx != -1 {

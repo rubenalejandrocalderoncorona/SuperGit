@@ -10,6 +10,7 @@ interface SidebarProps {
   activeView: "repos" | "pulse" | "activity" | "repo-detail";
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  onOpenSettings: () => void;
 }
 
 export function Sidebar({
@@ -19,6 +20,7 @@ export function Sidebar({
   activeView,
   theme,
   onToggleTheme,
+  onOpenSettings,
 }: SidebarProps) {
   const [repos, setRepos] = useState<Repo[]>([]);
   const [error, setError] = useState(false);
@@ -86,6 +88,24 @@ export function Sidebar({
         </span>
 
         <span className="flex-1" />
+
+        {/* Settings */}
+        <button
+          onClick={onOpenSettings}
+          title="Settings"
+          className="w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-150 shrink-0 text-sm"
+          style={{ color: "var(--sg-muted)", background: "transparent" }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "rgba(55,138,221,0.12)";
+            (e.currentTarget as HTMLElement).style.color = "var(--sg-accent)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.background = "transparent";
+            (e.currentTarget as HTMLElement).style.color = "var(--sg-muted)";
+          }}
+        >
+          ⚙
+        </button>
 
         <button
           onClick={onToggleTheme}

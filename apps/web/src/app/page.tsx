@@ -7,6 +7,7 @@ import { RepoGrid } from "@/components/RepoGrid";
 import { PulseDashboard } from "@/components/PulseDashboard";
 import { RepoDetail } from "@/components/RepoDetail";
 import { ActivityView } from "@/components/ActivityView";
+import { SettingsModal } from "@/components/SettingsModal";
 import { fetchRepos, type Repo } from "@/lib/api";
 
 type View = "repos" | "pulse" | "repo-detail" | "activity";
@@ -19,6 +20,7 @@ export default function Home() {
   const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
   const [selectedRepoObj, setSelectedRepoObj] = useState<Repo | null>(null);
   const [repos, setRepos] = useState<Repo[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -42,6 +44,17 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: "var(--sg-bg)" }}>
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          onSaved={() => {
+            // Reload repos list with new credentials.
+            fetchRepos().then(setRepos).catch(() => {});
+            setActiveView("repos");
+            setSelectedRepo(null);
+          }}
+        />
+      )}
       <Sidebar
         onSelectRepo={handleSelectRepo}
         selectedRepo={selectedRepo}
@@ -49,6 +62,7 @@ export default function Home() {
         activeView={activeView}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+        onOpenSettings={() => setShowSettings(true)}
       />
 
       <div className="flex flex-col flex-1 overflow-hidden">

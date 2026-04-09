@@ -92,6 +92,29 @@ export async function fetchReadme(owner: string, repo: string): Promise<ReadmeCo
   return r.json();
 }
 
+export interface SettingsInfo {
+  token_hint?: string;
+  github_token?: string;
+}
+
+export async function fetchSettings(): Promise<SettingsInfo> {
+  const r = await fetch(`${BASE}/api/settings`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`fetchSettings: ${r.status}`);
+  return r.json();
+}
+
+export async function saveSettings(token: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ github_token: token }),
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `saveSettings: ${r.status}`);
+  }
+}
+
 export async function fetchUserHeatmap(): Promise<HeatmapDay[]> {
   const r = await fetch(`${BASE}/api/activity/heatmap`, { cache: "no-store" });
   if (!r.ok) throw new Error(`fetchUserHeatmap: ${r.status}`);

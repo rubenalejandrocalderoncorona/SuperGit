@@ -55,6 +55,11 @@ func defaults() *Config {
 	}
 }
 
+// Save writes the config back to ~/.supergit/config.json.
+func (c *Config) Save() error {
+	return write(DefaultPath(), c)
+}
+
 func write(path string, cfg *Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err

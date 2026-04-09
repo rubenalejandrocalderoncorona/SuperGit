@@ -2,7 +2,7 @@ package api
 
 import "time"
 
-const Version = "v.0.0.4"
+const Version = "v.0.0.5"
 const RepoURL = "https://github.com/rubenalejandrocalderoncorona/SuperGit"
 
 // Repo is the API representation of a repository.
@@ -50,6 +50,12 @@ type ReadmeContent struct {
 type VersionInfo struct {
 	Version string `json:"version"`
 	RepoURL string `json:"repo_url"`
+}
+
+// SettingsInfo is the request/response for GET and POST /api/settings.
+type SettingsInfo struct {
+	GitHubToken string `json:"github_token"` // masked on GET, plaintext on POST
+	TokenHint   string `json:"token_hint"`   // last 4 chars shown on GET
 }
 
 // HealthResponse is the response from GET /api/health.
