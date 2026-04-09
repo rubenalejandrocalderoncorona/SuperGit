@@ -106,6 +106,31 @@ func (c *Client) UserActivity(ctx context.Context, username string) ([]*gh.Event
 	return all, nil
 }
 
+// CommitHistoryByAuthor returns commits for owner/repo over the last `days` days,
+// filtered to commits authored by the given GitHub username.
+func (c *Client) CommitHistoryByAuthor(ctx context.Context, owner, repo, author string, days int) ([]*gh.RepositoryCommit, error) {
+	since := time.Now().AddDate(0, 0, -days)
+	opts := &gh.CommitsListOptions{
+		Author: author,
+		Since:  since,
+		ListOptions: gh.ListOptions{PerPage: 100},
+	}
+	var all []*gh.RepositoryCommit
+	for page := 1; page <= 10; page++ {
+		opts.Page = page
+		commits, resp, err := c.gh.Repositories.ListCommits(ctx, owner, repo, opts)
+		if err != nil {
+			// Swallow 409 (empty repo) and 404 errors silently.
+			return all, nil
+		}
+		all = append(all, commits...)
+		if resp.NextPage == 0 {
+			break
+		}
+	}
+	return all, nil
+}
+
 // CommitHistory returns commits for owner/repo over the last `days` days.
 func (c *Client) CommitHistory(ctx context.Context, owner, repo string, days int) ([]*gh.RepositoryCommit, error) {
 	since := time.Now().AddDate(0, 0, -days)

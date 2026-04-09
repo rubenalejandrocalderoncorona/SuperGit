@@ -22,6 +22,11 @@ func main() {
 		log.Fatalf("GitHub auth error: %v", err)
 	}
 
+	// Store the resolved token in config so the settings handler can persist it.
+	if cfg.GitHubToken == "" {
+		cfg.GitHubToken = token
+	}
+
 	ghClient := ghauth.New(token)
 
 	mux := api.BuildMux(cfg, ghClient)
