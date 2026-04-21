@@ -8,13 +8,16 @@ export function ActivityView() {
   const [data, setData] = useState<HeatmapDay[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setError(null);
     fetchUserHeatmap()
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   const totalCommits = data?.reduce((sum, d) => sum + d.count, 0) ?? 0;
   const activeDays = data?.filter((d) => d.count > 0).length ?? 0;
@@ -60,9 +63,42 @@ export function ActivityView() {
         className="glass p-5"
         style={{ borderRadius: 11, boxShadow: "var(--sg-card-shadow)" }}
       >
-        <h2 className="text-sm font-semibold mb-4" style={{ color: "var(--sg-muted)" }}>
-          Contributions · past year
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold" style={{ color: "var(--sg-muted)" }}>
+            Contributions · past year
+          </h2>
+          <button
+            onClick={() => setRefreshKey((k) => k + 1)}
+            disabled={loading}
+            className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-opacity"
+            style={{
+              color: "var(--sg-muted)",
+              background: "var(--sg-surface)",
+              border: "1px solid var(--sg-border-dim)",
+              opacity: loading ? 0.4 : 1,
+              cursor: loading ? "not-allowed" : "pointer",
+            }}
+            title="Refresh heatmap"
+          >
+            <svg
+              width={12}
+              height={12}
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ transform: loading ? "none" : undefined }}
+            >
+              <path d="M1 4v4h4" />
+              <path d="M15 12v-4h-4" />
+              <path d="M13.5 6A6 6 0 0 0 3 6.5" />
+              <path d="M2.5 10A6 6 0 0 0 13 9.5" />
+            </svg>
+            Refresh
+          </button>
+        </div>
 
         {loading && (
           <p className="text-sm" style={{ color: "var(--sg-dim)" }}>Loading…</p>
