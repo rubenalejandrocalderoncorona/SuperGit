@@ -342,15 +342,15 @@ func heatmapHandlerDynamic() http.HandlerFunc {
 		}
 
 		dateCount := make(map[string]int, 365)
-		now := time.Now()
+		now := time.Now().UTC()
 		for i := 0; i < 365; i++ {
 			d := now.AddDate(0, 0, -i).Format("2006-01-02")
 			dateCount[d] = 0
 		}
 		for _, c := range commits {
 			if cm := c.GetCommit(); cm != nil {
-				if au := cm.GetAuthor(); au != nil {
-					key := au.GetDate().Time.Format("2006-01-02")
+				if ct := cm.GetCommitter(); ct != nil {
+					key := ct.GetDate().Time.UTC().Format("2006-01-02")
 					if _, ok := dateCount[key]; ok {
 						dateCount[key]++
 					}
@@ -419,7 +419,7 @@ func userHeatmapHandler() http.HandlerFunc {
 		}()
 
 		dateCount := make(map[string]int, 365)
-		now := time.Now()
+		now := time.Now().UTC()
 		for i := 0; i < 365; i++ {
 			d := now.AddDate(0, 0, -i).Format("2006-01-02")
 			dateCount[d] = 0
@@ -428,8 +428,8 @@ func userHeatmapHandler() http.HandlerFunc {
 		for rc := range results {
 			for _, c := range rc.commits {
 				if cm := c.GetCommit(); cm != nil {
-					if au := cm.GetAuthor(); au != nil {
-						key := au.GetDate().Time.Format("2006-01-02")
+					if ct := cm.GetCommitter(); ct != nil {
+						key := ct.GetDate().Time.UTC().Format("2006-01-02")
 						if _, ok := dateCount[key]; ok {
 							dateCount[key]++
 						}
