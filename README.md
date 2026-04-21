@@ -2,6 +2,27 @@
 
 A dual-interface GitHub repository browser and analytics tool — GUI and TUI sharing a single Go REST API backend.
 
+## Running the App
+
+> **Requires:** Go 1.22+, Node.js 18+, npm, and the [gh CLI](https://cli.github.com/) authenticated (`gh auth login`).
+
+```bash
+make install   # first time only — installs web dependencies
+make web       # API server (background) + Next.js GUI (foreground)
+# — or —
+make tui       # API server (background) + Bubble Tea TUI (foreground)
+```
+
+- API → http://localhost:8765
+- Web UI → http://localhost:3000 *(only when using `make web`)*
+- API log → `.log/server.log`
+
+```bash
+make stop      # stops the background API server
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -25,21 +46,10 @@ SuperGit/
 make install
 ```
 
-**2. Start the REST API server** (Terminal 1)
+**2. Launch** — pick one interface:
 ```bash
-make server
-# → http://localhost:8765
-```
-
-**3a. Start the GUI** (Terminal 2)
-```bash
-make web
-# → http://localhost:3000
-```
-
-**3b. Or start the TUI** (Terminal 2)
-```bash
-make tui
+make web   # GUI  → http://localhost:3000  (API auto-started in background)
+make tui   # TUI  (API auto-started in background)
 ```
 
 ## REST API Endpoints
