@@ -50,6 +50,7 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("GET /api/settings", withCORS(getSettingsHandler))
 	mux.HandleFunc("POST /api/settings", withCORS(postSettingsHandler))
 	mux.HandleFunc("GET /api/repos", withCORS(reposHandlerDynamic(cfg)))
+	mux.HandleFunc("GET /api/raibis/repos", withCORS(raibisReposHandler(cfg)))
 	mux.HandleFunc("DELETE /api/repos/{owner}/{repo}", withCORS(deleteRepoHandlerDynamic()))
 	mux.HandleFunc("DELETE /api/repos/{name}", withCORS(deleteLocalRepoHandler))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/commits", withCORS(commitsHandlerDynamic()))
@@ -183,6 +184,75 @@ func reposHandlerDynamic(cfg *config.Config) http.HandlerFunc {
 		}
 		hiddenMu.RUnlock()
 
+		writeJSON(w, filtered)
+	}
+}
+
+// GET /api/raibis/repos — returns a flat list of repo names for raibis integrations.
+// Combines GitHub + local repos, returns [{name, full_name, source, url, language}].
+func raibisReposHandler(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ghc := activeClient.Load()
+		ctx := r.Context()
+
+		type RaibisRepo struct {
+			Name     string `json:"name"`
+			FullName string `json:"full_name"`
+			Source   string `json:"source"`
+			URL      string `json:"url"`
+			Language string `json:"language,omitempty"`
+		}
+
+		var result []RaibisRepo
+
+		ghRepos, err := ghc.ListRepos(ctx)
+		if err == nil {
+			for _, gr := range ghRepos {
+				result = append(result, RaibisRepo{
+					Name:     gr.GetName(),
+					FullName: gr.GetFullName(),
+					Source:   "github",
+					URL:      gr.GetHTMLURL(),
+					Language: gr.GetLanguage(),
+				})
+			}
+		}
+
+		existing := make(map[string]bool)
+		for _, r := range result {
+			existing[r.URL] = true
+		}
+		localRepos, _ := git.Scan(cfg.ScanDirs)
+		for _, lr := range localRepos {
+			normalURL := normalizeGitURL(lr.RemoteURL)
+			if existing[normalURL] {
+				continue
+			}
+			result = append(result, RaibisRepo{
+				Name:     lr.Name,
+				FullName: lr.Name,
+				Source:   "local",
+				URL:      normalURL,
+			})
+		}
+
+		// Filter hidden repos
+		hiddenMu.RLock()
+		filtered := result[:0]
+		for _, repo := range result {
+			key := repo.FullName
+			if key == "" {
+				key = repo.Name
+			}
+			if !hiddenRepos[key] {
+				filtered = append(filtered, repo)
+			}
+		}
+		hiddenMu.RUnlock()
+
+		if filtered == nil {
+			filtered = []RaibisRepo{}
+		}
 		writeJSON(w, filtered)
 	}
 }
