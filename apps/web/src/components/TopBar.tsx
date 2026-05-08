@@ -11,12 +11,12 @@ export function TopBar({ search, onSearch, sort, onSort }: TopBarProps) {
   return (
     <header
       className="flex items-center gap-3 px-4 py-2 glass border-b shrink-0"
-      style={{ borderColor: "rgba(55,138,221,0.18)" }}
+      style={{ borderColor: "var(--sg-border)" }}
     >
       <div className="relative flex-1">
         <span
           className="absolute left-3 top-1/2 -translate-y-1/2 text-sm"
-          style={{ color: "#5a8ab0" }}
+          style={{ color: "var(--sg-muted)" }}
         >
           ⌕
         </span>
@@ -27,17 +27,15 @@ export function TopBar({ search, onSearch, sort, onSort }: TopBarProps) {
           onChange={(e) => onSearch(e.target.value)}
           className="w-full pl-8 pr-3 py-1.5 rounded-lg text-sm outline-none transition-all"
           style={{
-            background: "rgba(22,32,48,0.6)",
-            border: "1px solid rgba(30,58,95,0.8)",
-            color: "#d8e8f5",
+            background: "var(--sg-input-bg)",
+            border: "1px solid var(--sg-border-dim)",
+            color: "var(--sg-text)",
           }}
           onFocus={(e) => {
-            (e.target as HTMLInputElement).style.borderColor =
-              "rgba(55,138,221,0.5)";
+            (e.target as HTMLInputElement).style.borderColor = "var(--sg-accent)";
           }}
           onBlur={(e) => {
-            (e.target as HTMLInputElement).style.borderColor =
-              "rgba(30,58,95,0.8)";
+            (e.target as HTMLInputElement).style.borderColor = "var(--sg-border-dim)";
           }}
         />
       </div>
@@ -45,11 +43,11 @@ export function TopBar({ search, onSearch, sort, onSort }: TopBarProps) {
       <select
         value={sort}
         onChange={(e) => onSort(e.target.value as "name" | "lastCommit")}
-        className="px-3 py-1.5 rounded-lg text-sm outline-none cursor-pointer transition-all"
+        className="px-3 py-1.5 rounded-lg text-sm outline-none cursor-pointer"
         style={{
-          background: "rgba(22,32,48,0.6)",
-          border: "1px solid rgba(30,58,95,0.8)",
-          color: "#d8e8f5",
+          background: "var(--sg-input-bg)",
+          border: "1px solid var(--sg-border-dim)",
+          color: "var(--sg-text)",
         }}
       >
         <option value="lastCommit">Sort: Last Committed</option>

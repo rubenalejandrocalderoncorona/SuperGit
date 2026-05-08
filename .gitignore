@@ -17,3 +17,7 @@ apps/web/out/
 .idea/
 .vscode/
 *.swp
+
+# Build artifacts
+scripts/supergit-webview
+.log/
