@@ -16,6 +16,7 @@ import (
 	"github.com/rubenalejandrocalderoncorona/supergit/internal/config"
 	"github.com/rubenalejandrocalderoncorona/supergit/internal/git"
 	ghclient "github.com/rubenalejandrocalderoncorona/supergit/internal/github"
+	"github.com/rubenalejandrocalderoncorona/supergit/internal/users"
 )
 
 // ensure gh import is used
@@ -36,12 +37,27 @@ var (
 	activeCfg   *config.Config
 )
 
+// activeUserStore holds the multi-user store.
+var (
+	activeUserStoreMu sync.RWMutex
+	activeUserStore   *users.Store
+)
+
 // BuildMux registers all routes and returns the configured ServeMux.
 func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	activeCfgMu.Lock()
 	activeCfg = cfg
 	activeCfgMu.Unlock()
 	activeClient.Store(ghc)
+
+	store, err := users.Load()
+	if err != nil {
+		log.Printf("users store warning: %v (starting empty)", err)
+		store = &users.Store{Users: []users.User{}}
+	}
+	activeUserStoreMu.Lock()
+	activeUserStore = store
+	activeUserStoreMu.Unlock()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("OPTIONS /", corsPreflightHandler)
@@ -59,6 +75,10 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/heatmap", withCORS(heatmapHandlerDynamic()))
 	mux.HandleFunc("GET /api/repos/{owner}/{repo}/readme", withCORS(readmeHandlerDynamic()))
 	mux.HandleFunc("GET /api/activity/heatmap", withCORS(userHeatmapHandler()))
+	mux.HandleFunc("GET /api/users", withCORS(getUsersHandler))
+	mux.HandleFunc("POST /api/users", withCORS(postAddUserHandler))
+	mux.HandleFunc("DELETE /api/users/{username}", withCORS(deleteUserHandler))
+	mux.HandleFunc("POST /api/users/{username}/activate", withCORS(activateUserHandler))
 	return mux
 }
 
@@ -446,9 +466,9 @@ func readmeHandlerDynamic() http.HandlerFunc {
 	}
 }
 
-// userHeatmapHandler returns the authenticated user's contribution heatmap
-// across all repos for the past 365 days.
-// It fetches commits per-repo filtered by author, in parallel.
+// userHeatmapHandler returns the authenticated user's contribution heatmap for the past year.
+// Uses the GitHub Events API (single paginated call) which covers ~90 days of activity.
+// Days older than ~90 days show zero — this is a GitHub Events API retention limit.
 func userHeatmapHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ghc := activeClient.Load()
@@ -460,51 +480,33 @@ func userHeatmapHandler() http.HandlerFunc {
 			return
 		}
 
-		repos, err := ghc.ListRepos(ctx)
+		events, err := ghc.UserActivity(ctx, username)
 		if err != nil {
 			errJSON(w, err.Error(), http.StatusBadGateway)
 			return
 		}
 
-		type result struct{ commits []*gh.RepositoryCommit }
-		results := make(chan result, len(repos))
-		sem := make(chan struct{}, 8)
-
-		var wg sync.WaitGroup
-		for _, repo := range repos {
-			owner := repo.GetOwner().GetLogin()
-			name := repo.GetName()
-			wg.Add(1)
-			go func(owner, name string) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-				commits, _ := ghc.CommitHistoryByAuthor(ctx, owner, name, username, 365)
-				results <- result{commits: commits}
-			}(owner, name)
-		}
-		go func() {
-			wg.Wait()
-			close(results)
-		}()
-
 		dateCount := make(map[string]int, 365)
 		now := time.Now().UTC()
 		for i := 0; i < 365; i++ {
-			d := now.AddDate(0, 0, -i).Format("2006-01-02")
-			dateCount[d] = 0
+			dateCount[now.AddDate(0, 0, -i).Format("2006-01-02")] = 0
 		}
 
-		for rc := range results {
-			for _, c := range rc.commits {
-				if cm := c.GetCommit(); cm != nil {
-					if ct := cm.GetCommitter(); ct != nil {
-						key := ct.GetDate().Time.UTC().Format("2006-01-02")
-						if _, ok := dateCount[key]; ok {
-							dateCount[key]++
-						}
-					}
-				}
+		for _, event := range events {
+			if event.GetType() != "PushEvent" {
+				continue
+			}
+			payload, err := event.ParsePayload()
+			if err != nil {
+				continue
+			}
+			push, ok := payload.(*gh.PushEvent)
+			if !ok {
+				continue
+			}
+			key := event.GetCreatedAt().Time.UTC().Format("2006-01-02")
+			if _, exists := dateCount[key]; exists {
+				dateCount[key] += push.GetSize()
 			}
 		}
 
@@ -547,6 +549,114 @@ func buildHeatmap(dateCount map[string]int, days int) []HeatmapDay {
 		out = append(out, HeatmapDay{Date: d, Count: cnt, Intensity: intensity})
 	}
 	return out
+}
+
+// ── User management ───────────────────────────────────────────────────────────
+
+func getUsersHandler(w http.ResponseWriter, r *http.Request) {
+	activeUserStoreMu.RLock()
+	store := activeUserStore
+	activeUserStoreMu.RUnlock()
+	if store == nil {
+		writeJSON(w, UsersResponse{Users: []UserEntry{}})
+		return
+	}
+	entries := make([]UserEntry, 0, len(store.Users))
+	for _, u := range store.Users {
+		hint := ""
+		if len(u.Token) >= 4 {
+			hint = "****" + u.Token[len(u.Token)-4:]
+		} else if u.Token != "" {
+			hint = "****"
+		}
+		entries = append(entries, UserEntry{Username: u.Username, TokenHint: hint})
+	}
+	writeJSON(w, UsersResponse{Active: store.Active, Users: entries})
+}
+
+func postAddUserHandler(w http.ResponseWriter, r *http.Request) {
+	var req AddUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Username == "" || req.Token == "" {
+		errJSON(w, "username and token are required", http.StatusBadRequest)
+		return
+	}
+	newClient := ghclient.New(req.Token)
+	if _, err := newClient.AuthenticatedUser(r.Context()); err != nil {
+		errJSON(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	activeUserStoreMu.Lock()
+	defer activeUserStoreMu.Unlock()
+	if err := activeUserStore.Add(users.User{Username: req.Username, Token: req.Token}); err != nil {
+		errJSON(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := activeUserStore.Save(); err != nil {
+		errJSON(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+	activeUserStoreMu.Lock()
+	defer activeUserStoreMu.Unlock()
+	if err := activeUserStore.Remove(username); err != nil {
+		errJSON(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if err := activeUserStore.Save(); err != nil {
+		errJSON(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func activateUserHandler(w http.ResponseWriter, r *http.Request) {
+	username := r.PathValue("username")
+
+	// Read token without holding the lock during the network call.
+	activeUserStoreMu.RLock()
+	u := activeUserStore.Find(username)
+	var token string
+	if u != nil {
+		token = u.Token
+	}
+	activeUserStoreMu.RUnlock()
+
+	if token == "" {
+		errJSON(w, fmt.Sprintf("user %q not found", username), http.StatusNotFound)
+		return
+	}
+
+	newClient := ghclient.New(token)
+	if _, err := newClient.AuthenticatedUser(r.Context()); err != nil {
+		errJSON(w, "invalid token: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	activeUserStoreMu.Lock()
+	if err := activeUserStore.SetActive(username); err != nil {
+		activeUserStoreMu.Unlock()
+		errJSON(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if err := activeUserStore.Save(); err != nil {
+		activeUserStoreMu.Unlock()
+		errJSON(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	activeUserStoreMu.Unlock()
+
+	activeClient.Store(newClient)
+	activeCfgMu.Lock()
+	activeCfg.GitHubToken = token
+	_ = activeCfg.Save()
+	activeCfgMu.Unlock()
+
+	log.Printf("active user switched to %s", username)
+	writeJSON(w, map[string]bool{"ok": true})
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

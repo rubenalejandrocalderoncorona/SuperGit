@@ -120,3 +120,48 @@ export async function fetchUserHeatmap(): Promise<HeatmapDay[]> {
   if (!r.ok) throw new Error(`fetchUserHeatmap: ${r.status}`);
   return r.json();
 }
+
+export interface UserEntry {
+  username: string;
+  token_hint: string;
+}
+
+export interface UsersResponse {
+  active: string;
+  users: UserEntry[];
+}
+
+export async function fetchUsers(): Promise<UsersResponse> {
+  const r = await fetch(`${BASE}/api/users`, { cache: "no-store" });
+  if (!r.ok) throw new Error(`fetchUsers: ${r.status}`);
+  return r.json();
+}
+
+export async function addUser(username: string, token: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, token }),
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `addUser: ${r.status}`);
+  }
+}
+
+export async function deleteUser(username: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}`, {
+    method: "DELETE",
+  });
+  if (!r.ok) throw new Error(`deleteUser: ${r.status}`);
+}
+
+export async function activateUser(username: string): Promise<void> {
+  const r = await fetch(`${BASE}/api/users/${encodeURIComponent(username)}/activate`, {
+    method: "POST",
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? `activateUser: ${r.status}`);
+  }
+}

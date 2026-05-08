@@ -62,3 +62,21 @@ type SettingsInfo struct {
 type HealthResponse struct {
 	OK bool `json:"ok"`
 }
+
+// UserEntry is a safe-for-GET representation of a stored user (token masked).
+type UserEntry struct {
+	Username  string `json:"username"`
+	TokenHint string `json:"token_hint"`
+}
+
+// UsersResponse is returned by GET /api/users.
+type UsersResponse struct {
+	Active string      `json:"active"`
+	Users  []UserEntry `json:"users"`
+}
+
+// AddUserRequest is the body for POST /api/users.
+type AddUserRequest struct {
+	Username string `json:"username"`
+	Token    string `json:"token"`
+}

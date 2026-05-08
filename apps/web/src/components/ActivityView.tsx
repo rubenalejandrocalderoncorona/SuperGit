@@ -30,7 +30,7 @@ export function ActivityView() {
           Activity
         </h1>
         <p className="text-xs" style={{ color: "var(--sg-muted)" }}>
-          Your contributions across all repositories · past year
+          Your contributions across all repositories · past ~90 days
         </p>
       </div>
 
@@ -65,7 +65,7 @@ export function ActivityView() {
       >
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold" style={{ color: "var(--sg-muted)" }}>
-            Contributions · past year
+            Contributions · past ~90 days
           </h2>
           <button
             onClick={() => setRefreshKey((k) => k + 1)}

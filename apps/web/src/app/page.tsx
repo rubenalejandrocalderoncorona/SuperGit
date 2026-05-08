@@ -8,9 +8,10 @@ import { PulseDashboard } from "@/components/PulseDashboard";
 import { RepoDetail } from "@/components/RepoDetail";
 import { ActivityView } from "@/components/ActivityView";
 import { SettingsModal } from "@/components/SettingsModal";
+import { UserManager } from "@/components/UserManager";
 import { fetchRepos, type Repo } from "@/lib/api";
 
-type View = "repos" | "pulse" | "repo-detail" | "activity";
+type View = "repos" | "pulse" | "repo-detail" | "activity" | "users";
 
 export default function Home() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -37,7 +38,7 @@ export default function Home() {
     setActiveView("repo-detail");
   };
 
-  const handleViewChange = (view: "repos" | "pulse" | "activity") => {
+  const handleViewChange = (view: "repos" | "pulse" | "activity" | "users") => {
     setActiveView(view);
     setSelectedRepo(null);
   };
@@ -81,6 +82,7 @@ export default function Home() {
           )}
           {activeView === "pulse" && <PulseDashboard />}
           {activeView === "activity" && <ActivityView />}
+          {activeView === "users" && <UserManager />}
           {activeView === "repo-detail" && selectedRepoObj && (
             <RepoDetail
               repo={selectedRepoObj}

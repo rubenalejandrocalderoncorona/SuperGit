@@ -6,8 +6,8 @@ import { fetchRepos, fetchVersion, type Repo } from "@/lib/api";
 interface SidebarProps {
   onSelectRepo: (fullName: string) => void;
   selectedRepo: string | null;
-  onViewChange: (view: "repos" | "pulse" | "activity") => void;
-  activeView: "repos" | "pulse" | "activity" | "repo-detail";
+  onViewChange: (view: "repos" | "pulse" | "activity" | "users") => void;
+  activeView: "repos" | "pulse" | "activity" | "repo-detail" | "users";
   theme: "dark" | "light";
   onToggleTheme: () => void;
   onOpenSettings: () => void;
@@ -144,6 +144,12 @@ export function Sidebar({
           icon="◈"
           active={activeView === "activity"}
           onClick={() => onViewChange("activity")}
+        />
+        <NavItem
+          label="Users"
+          icon="⊙"
+          active={activeView === "users"}
+          onClick={() => onViewChange("users")}
         />
       </nav>
 
