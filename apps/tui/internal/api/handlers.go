@@ -55,6 +55,23 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 		log.Printf("users store warning: %v (starting empty)", err)
 		store = &users.Store{Users: []users.User{}}
 	}
+	// If the store is empty but we have a live token, seed the current GitHub user.
+	if len(store.Users) == 0 && cfg.GitHubToken != "" {
+		if username, err := ghc.AuthenticatedUser(context.Background()); err == nil {
+			store.Users = []users.User{{Username: username, Token: cfg.GitHubToken}}
+			store.Active = username
+			if saveErr := store.Save(); saveErr != nil {
+				log.Printf("could not seed users store: %v", saveErr)
+			} else {
+				log.Printf("seeded users store with %s", username)
+			}
+		}
+	}
+	// If the store has users but no active set, activate the first one.
+	if store.Active == "" && len(store.Users) > 0 {
+		store.Active = store.Users[0].Username
+		_ = store.Save()
+	}
 	activeUserStoreMu.Lock()
 	activeUserStore = store
 	activeUserStoreMu.Unlock()
@@ -504,9 +521,17 @@ func userHeatmapHandler() http.HandlerFunc {
 			if !ok {
 				continue
 			}
+			// GetSize() can be 0 when GitHub truncates large pushes; fall back to commit count.
+			count := push.GetSize()
+			if count == 0 {
+				count = len(push.Commits)
+			}
+			if count == 0 {
+				count = 1 // at minimum record that a push happened
+			}
 			key := event.GetCreatedAt().Time.UTC().Format("2006-01-02")
 			if _, exists := dateCount[key]; exists {
-				dateCount[key] += push.GetSize()
+				dateCount[key] += count
 			}
 		}
 
@@ -600,16 +625,40 @@ func postAddUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.PathValue("username")
+
+	// Capture whether this user was active and who the next candidate is before removing.
 	activeUserStoreMu.Lock()
-	defer activeUserStoreMu.Unlock()
+	wasActive := activeUserStore.Active == username
 	if err := activeUserStore.Remove(username); err != nil {
+		activeUserStoreMu.Unlock()
 		errJSON(w, err.Error(), http.StatusNotFound)
 		return
 	}
+	// Auto-promote the first remaining user if the deleted user was active.
+	var promoted *users.User
+	if wasActive && len(activeUserStore.Users) > 0 {
+		next := activeUserStore.Users[0]
+		promoted = &next
+		activeUserStore.Active = next.Username
+	}
 	if err := activeUserStore.Save(); err != nil {
+		activeUserStoreMu.Unlock()
 		errJSON(w, "failed to save: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	activeUserStoreMu.Unlock()
+
+	// Hot-swap the client if we promoted a new active user.
+	if promoted != nil {
+		newClient := ghclient.New(promoted.Token)
+		activeClient.Store(newClient)
+		activeCfgMu.Lock()
+		activeCfg.GitHubToken = promoted.Token
+		_ = activeCfg.Save()
+		activeCfgMu.Unlock()
+		log.Printf("active user auto-promoted to %s after deletion of %s", promoted.Username, username)
+	}
+
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
