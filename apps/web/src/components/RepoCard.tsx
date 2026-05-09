@@ -130,16 +130,16 @@ export function RepoCard({ repo, selected, onClick, onDelete }: RepoCardProps) {
           outline: selected ? "1px solid rgba(55,138,221,0.3)" : "none",
         }}
       >
-        {/* ✕ button — top-right, only on hover */}
-        {onDelete && hovered && (
+        {/* ✕ button — always visible; subtle until hovered on desktop */}
+        {onDelete && (
           <button
             onClick={(e) => { e.stopPropagation(); setShowModal(true); }}
             title="Delete repository"
             className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-xs transition-all duration-150"
             style={{
               background: "rgba(220,53,69,0.12)",
-              color: "var(--sg-dim)",
-              border: "1px solid transparent",
+              color: hovered ? "#e05c6a" : "var(--sg-dim)",
+              border: hovered ? "1px solid rgba(220,53,69,0.4)" : "1px solid transparent",
             }}
             onMouseEnter={(e) => {
               const el = e.currentTarget as HTMLElement;
@@ -159,7 +159,7 @@ export function RepoCard({ repo, selected, onClick, onDelete }: RepoCardProps) {
         )}
 
         {/* Name + language */}
-        <div className="flex items-start justify-between gap-2 mb-1" style={{ paddingRight: hovered && onDelete ? 28 : 0 }}>
+        <div className="flex items-start justify-between gap-2 mb-1" style={{ paddingRight: onDelete ? 28 : 0 }}>
           <h3
             className="font-semibold truncate text-sm"
             style={{ color: "var(--sg-text)" }}

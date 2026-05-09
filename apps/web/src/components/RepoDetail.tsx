@@ -71,7 +71,7 @@ export function RepoDetail({ repo, onBack }: Props) {
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-all"
+          className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-all shrink-0"
           style={{
             color: "var(--sg-muted)",
             background: "transparent",
