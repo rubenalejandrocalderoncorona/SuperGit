@@ -57,10 +57,10 @@ export function PulseDashboard() {
   });
 
   return (
-    <div className="flex h-full gap-4">
-      {/* ── Left: repo list ── */}
+    <div className="flex flex-col md:flex-row h-full gap-4">
+      {/* ── Repo list: side panel on desktop, select on mobile ── */}
       <aside
-        className="w-64 shrink-0 flex flex-col glass"
+        className="hidden md:flex w-64 shrink-0 flex-col glass"
         style={{ borderRadius: 12, boxShadow: "var(--sg-card-shadow)" }}
       >
         <div className="p-3 border-b" style={{ borderColor: "var(--sg-border)" }}>
@@ -123,6 +123,30 @@ export function PulseDashboard() {
           })}
         </ul>
       </aside>
+
+      {/* Mobile repo picker */}
+      <div className="md:hidden shrink-0">
+        <select
+          value={selectedRepo?.full_name ?? ""}
+          onChange={(e) => {
+            const r = repos.find((r) => r.full_name === e.target.value);
+            if (r) handleSelect(r);
+          }}
+          className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+          style={{
+            background: "var(--sg-input-bg)",
+            border: "1px solid var(--sg-border-dim)",
+            color: "var(--sg-text)",
+          }}
+        >
+          <option value="">Select a repository…</option>
+          {repos.map((r) => (
+            <option key={r.full_name} value={r.full_name}>
+              {r.name}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* ── Right: pulse panel ── */}
       <div className="flex-1 min-w-0">
