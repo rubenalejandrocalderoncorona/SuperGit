@@ -46,6 +46,12 @@ type ReadmeContent struct {
 	Content string `json:"content"` // raw markdown
 }
 
+// UptimeInfo is the response from GET /api/uptime.
+type UptimeInfo struct {
+	StartedAt     string `json:"started_at"`
+	UptimeSeconds int64  `json:"uptime_seconds"`
+}
+
 // VersionInfo is the response from GET /api/version.
 type VersionInfo struct {
 	Version string `json:"version"`

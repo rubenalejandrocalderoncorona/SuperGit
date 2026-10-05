@@ -80,6 +80,7 @@ func BuildMux(cfg *config.Config, ghc *ghclient.Client) *http.ServeMux {
 	mux.HandleFunc("OPTIONS /", corsPreflightHandler)
 	mux.HandleFunc("GET /api/health", withCORS(healthHandler))
 	mux.HandleFunc("GET /api/version", withCORS(versionHandler))
+	mux.HandleFunc("GET /api/uptime", withCORS(uptimeHandler))
 	mux.HandleFunc("GET /api/settings", withCORS(getSettingsHandler))
 	mux.HandleFunc("POST /api/settings", withCORS(postSettingsHandler))
 	mux.HandleFunc("GET /api/repos", withCORS(reposHandlerDynamic(cfg)))
@@ -108,6 +109,13 @@ func corsPreflightHandler(w http.ResponseWriter, _ *http.Request) {
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, HealthResponse{OK: true})
+}
+
+// startedAt is when this API process started; /api/uptime reports how long ago.
+var startedAt = time.Now()
+
+func uptimeHandler(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, UptimeInfo{StartedAt: startedAt.UTC().Format(time.RFC3339), UptimeSeconds: int64(time.Since(startedAt).Seconds())})
 }
 
 func versionHandler(w http.ResponseWriter, _ *http.Request) {

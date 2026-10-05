@@ -58,6 +58,7 @@ make tui   # TUI  (API auto-started in background)
 |--------|----------|-------------|
 | GET | `/api/health` | Liveness check |
 | GET | `/api/version` | Version + repo URL |
+| GET | `/api/uptime` | When the API process started and how many seconds it has been running |
 | GET | `/api/repos` | GitHub + local repos merged |
 | GET | `/api/repos/{owner}/{repo}/commits` | Commit history (30d) |
 | GET | `/api/repos/{owner}/{repo}/pulse` | Analytics dashboard data |
