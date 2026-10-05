@@ -108,3 +108,7 @@ make all        # both
 - **Repo Grid** — cards with language badges, star count, last commit time
 - **Pulse Dashboard** — 30-day commit bar chart, most active day, peak window stats
 - **Version Button** — top-right `v1.0.0` button opens this repository
+
+## Documentation
+
+The project documentation is generated from this repository by the multirepo-agent-docs pipeline on every push to `main`, reviewed through a pull request, and published at https://rubenalejandrocalderoncorona.org/documentation/.
